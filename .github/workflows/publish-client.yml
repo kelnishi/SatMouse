@@ -1,4 +1,4 @@
-name: Publish @kelnishi/client
+name: Publish @kelnishi/satmouse-client
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
 permissions:
   packages: write
   contents: read
+  id-token: write
 
 jobs:
   publish-npm:
@@ -32,7 +33,7 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
