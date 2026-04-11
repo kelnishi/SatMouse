@@ -60,8 +60,8 @@ export class MacOSDriver implements PlatformDriver {
     const objc_msgSend_l = objcLib.func("void *objc_msgSend(void *self, void *sel, long arg)");
 
     const NSApp = objc_msgSend(objc_getClass("NSApplication"), sel_registerName("sharedApplication"));
-    // NSApplicationActivationPolicyRegular = 0 (receives events, shows dock icon)
-    objc_msgSend_l(NSApp, sel_registerName("setActivationPolicy:"), 0);
+    // NSApplicationActivationPolicyAccessory = 1 (no dock icon, menu bar only)
+    objc_msgSend_l(NSApp, sel_registerName("setActivationPolicy:"), 1);
     objc_msgSend_l(NSApp, sel_registerName("activateIgnoringOtherApps:"), 1);
 
     // ---- Load framework ----
