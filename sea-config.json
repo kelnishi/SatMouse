@@ -1,0 +1,7 @@
+{
+  "main": "dist/main.js",
+  "output": "dist/satmouse.blob",
+  "disableExperimentalSEAWarning": true,
+  "useCodeCache": false,
+  "useSnapshot": false
+}

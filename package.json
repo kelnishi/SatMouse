@@ -1,0 +1,30 @@
+{
+  "name": "satmouse",
+  "version": "0.1.0",
+  "description": "3DConnexion SpaceMouse bridge — streams 6DOF spatial input over WebTransport and WebSocket",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --outfile=dist/main.js --external:koffi --external:@fails-components/webtransport",
+    "build:sea": "bash scripts/build-sea.sh",
+    "dev": "node --import=tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "generate-certs": "bash scripts/generate-dev-certs.sh"
+  },
+  "dependencies": {
+    "@fails-components/webtransport": "^1.6.0",
+    "bonjour-service": "^1.3.0",
+    "koffi": "^2.9.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SatMouse — Reference Client</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header id="status-bar">
+    <span id="status-dot"></span>
+    <span id="status-text">Disconnected</span>
+    <span id="protocol-label"></span>
+  </header>
+  <main>
+    <section id="viewport">
+      <canvas id="canvas"></canvas>
+    </section>
+    <aside id="sidebar">
+      <h2>Events</h2>
+      <div id="spatial-readout">
+        <div class="axis-row"><label>TX</label><span id="val-tx">0</span></div>
+        <div class="axis-row"><label>TY</label><span id="val-ty">0</span></div>
+        <div class="axis-row"><label>TZ</label><span id="val-tz">0</span></div>
+        <div class="axis-row"><label>RX</label><span id="val-rx">0</span></div>
+        <div class="axis-row"><label>RY</label><span id="val-ry">0</span></div>
+        <div class="axis-row"><label>RZ</label><span id="val-rz">0</span></div>
+      </div>
+      <h3>Button Log</h3>
+      <div id="button-log"></div>
+    </aside>
+  </main>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

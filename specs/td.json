@@ -1,0 +1,90 @@
+{
+  "@context": [
+    "https://www.w3.org/2022/wot/td/v1.1",
+    {
+      "iot": "https://iotschema.org/",
+      "satmouse": "https://satmouse.dev/vocab#"
+    }
+  ],
+  "@type": ["Thing", "iot:SpatialData"],
+  "id": "urn:satmouse:bridge:0",
+  "title": "SatMouse",
+  "description": "3D spatial input device bridge — streams 6DOF translation/rotation and button events",
+  "version": { "instance": "0.1.0" },
+  "securityDefinitions": {
+    "nosec_sc": {
+      "scheme": "nosec",
+      "description": "No security for local network development"
+    }
+  },
+  "security": ["nosec_sc"],
+  "properties": {
+    "deviceInfo": {
+      "@type": "satmouse:DeviceInfo",
+      "title": "Device Info",
+      "description": "Currently connected device metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "vendorId": { "type": "integer" },
+        "productId": { "type": "integer" },
+        "connected": { "type": "boolean" }
+      },
+      "readOnly": true,
+      "forms": [
+        {
+          "href": "http://localhost:4444/api/device",
+          "contentType": "application/json",
+          "op": "readproperty"
+        }
+      ]
+    }
+  },
+  "events": {
+    "spatialData": {
+      "@type": "iot:SpatialData",
+      "title": "Spatial Data",
+      "description": "6DOF spatial input stream — translation (x, y, z) and rotation (x, y, z)",
+      "data": { "$ref": "schemas/spatial-data.schema.json" },
+      "forms": [
+        {
+          "href": "https://localhost:4443",
+          "subprotocol": "webtransport",
+          "contentType": "application/octet-stream",
+          "op": "subscribeevent",
+          "satmouse:transport": "datagram",
+          "satmouse:encoding": "binary"
+        },
+        {
+          "href": "ws://localhost:4444/spatial",
+          "subprotocol": "websocket",
+          "contentType": "application/json",
+          "op": "subscribeevent"
+        }
+      ]
+    },
+    "buttonEvent": {
+      "@type": "satmouse:ButtonEvent",
+      "title": "Button Event",
+      "description": "Button press and release events",
+      "data": { "$ref": "schemas/button-event.schema.json" },
+      "forms": [
+        {
+          "href": "https://localhost:4443",
+          "subprotocol": "webtransport",
+          "contentType": "application/json",
+          "op": "subscribeevent",
+          "satmouse:transport": "stream",
+          "satmouse:encoding": "json"
+        },
+        {
+          "href": "ws://localhost:4444/spatial",
+          "subprotocol": "websocket",
+          "contentType": "application/json",
+          "op": "subscribeevent"
+        }
+      ]
+    }
+  }
+}

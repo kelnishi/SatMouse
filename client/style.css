@@ -1,0 +1,126 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #16213e;
+  border-bottom: 1px solid #0f3460;
+  font-size: 13px;
+}
+
+#status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e74c3c;
+  transition: background 0.3s;
+}
+
+#status-dot.connected {
+  background: #2ecc71;
+}
+
+#status-dot.connecting {
+  background: #f39c12;
+}
+
+#protocol-label {
+  margin-left: auto;
+  color: #7f8c8d;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+#viewport {
+  flex: 1;
+  position: relative;
+}
+
+#canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#sidebar {
+  width: 240px;
+  padding: 16px;
+  background: #16213e;
+  border-left: 1px solid #0f3460;
+  overflow-y: auto;
+}
+
+#sidebar h2, #sidebar h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7f8c8d;
+  margin-bottom: 8px;
+}
+
+#sidebar h3 {
+  margin-top: 16px;
+}
+
+.axis-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 13px;
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.axis-row label {
+  color: #7f8c8d;
+  font-weight: 600;
+  width: 28px;
+}
+
+.axis-row span {
+  color: #3498db;
+  text-align: right;
+  min-width: 60px;
+}
+
+#button-log {
+  font-size: 11px;
+  font-family: "SF Mono", "Fira Code", monospace;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+#button-log .log-entry {
+  padding: 2px 0;
+  border-bottom: 1px solid #0f3460;
+}
+
+#button-log .pressed {
+  color: #2ecc71;
+}
+
+#button-log .released {
+  color: #e74c3c;
+}

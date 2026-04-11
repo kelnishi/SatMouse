@@ -1,0 +1,172 @@
+asyncapi: 3.0.0
+
+info:
+  title: SatMouse
+  version: 0.1.0
+  description: |
+    3D spatial input device bridge. Streams 6DOF translation/rotation data and
+    button events from 3DConnexion SpaceMouse (and other spatial input devices)
+    to network clients over WebTransport and WebSocket.
+
+    ## Discovery
+
+    SatMouse advertises via mDNS as `_wot._tcp`. Clients fetch the WoT Thing
+    Description at `/td.json` to discover available protocols and endpoints.
+
+    ## Protocols
+
+    - **WebTransport (primary)**: Spatial data sent as binary datagrams (24 bytes),
+      button events on a reliable unidirectional stream.
+    - **WebSocket (fallback)**: JSON-encoded messages for both data types.
+
+servers:
+  webtransport:
+    host: localhost:4443
+    protocol: https
+    description: |
+      WebTransport server over HTTP/3 (QUIC). Requires TLS.
+      Spatial data delivered as unreliable datagrams for lowest latency.
+      Button events delivered on a reliable unidirectional stream.
+    tags:
+      - name: primary
+
+  websocket:
+    host: localhost:4444
+    protocol: ws
+    description: |
+      WebSocket fallback server. JSON-encoded messages.
+      Use when WebTransport is unavailable (e.g., older browsers).
+    tags:
+      - name: fallback
+
+channels:
+  spatialData:
+    address: /spatial
+    description: |
+      High-frequency 6DOF spatial input stream. Translation (x, y, z) and
+      rotation (x, y, z) in device-native units.
+
+      Over WebTransport: binary datagrams (24 bytes each).
+      Over WebSocket: JSON messages.
+    messages:
+      spatialData:
+        $ref: "#/components/messages/SpatialData"
+    servers:
+      - $ref: "#/servers/webtransport"
+      - $ref: "#/servers/websocket"
+
+  buttonEvents:
+    address: /buttons
+    description: |
+      Button press and release events. Delivered reliably.
+
+      Over WebTransport: JSON on a unidirectional stream.
+      Over WebSocket: JSON messages.
+    messages:
+      buttonEvent:
+        $ref: "#/components/messages/ButtonEvent"
+    servers:
+      - $ref: "#/servers/webtransport"
+      - $ref: "#/servers/websocket"
+
+  deviceStatus:
+    address: /device/status
+    description: |
+      Device connect and disconnect notifications.
+    messages:
+      deviceConnected:
+        $ref: "#/components/messages/DeviceConnected"
+      deviceDisconnected:
+        $ref: "#/components/messages/DeviceDisconnected"
+    servers:
+      - $ref: "#/servers/websocket"
+
+operations:
+  receiveSpatialData:
+    action: receive
+    channel:
+      $ref: "#/channels/spatialData"
+    summary: Subscribe to 6DOF spatial input data
+    description: |
+      Clients receive a continuous stream of spatial data frames.
+      Each frame contains translation and rotation vectors plus a timestamp.
+
+  receiveButtonEvents:
+    action: receive
+    channel:
+      $ref: "#/channels/buttonEvents"
+    summary: Subscribe to button press/release events
+
+  receiveDeviceStatus:
+    action: receive
+    channel:
+      $ref: "#/channels/deviceStatus"
+    summary: Subscribe to device connect/disconnect events
+
+components:
+  messages:
+    SpatialData:
+      name: SpatialData
+      title: Spatial Data
+      summary: 6DOF spatial input frame
+      contentType: application/json
+      payload:
+        $ref: "schemas/spatial-data.schema.json"
+
+    ButtonEvent:
+      name: ButtonEvent
+      title: Button Event
+      summary: Button press or release
+      contentType: application/json
+      payload:
+        $ref: "schemas/button-event.schema.json"
+
+    DeviceConnected:
+      name: DeviceConnected
+      title: Device Connected
+      summary: A spatial input device was connected
+      contentType: application/json
+      payload:
+        type: object
+        properties:
+          event:
+            type: string
+            const: connected
+          device:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              vendorId:
+                type: integer
+              productId:
+                type: integer
+            required: [id, name]
+          timestamp:
+            type: number
+        required: [event, device, timestamp]
+
+    DeviceDisconnected:
+      name: DeviceDisconnected
+      title: Device Disconnected
+      summary: A spatial input device was disconnected
+      contentType: application/json
+      payload:
+        type: object
+        properties:
+          event:
+            type: string
+            const: disconnected
+          device:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+            required: [id, name]
+          timestamp:
+            type: number
+        required: [event, device, timestamp]

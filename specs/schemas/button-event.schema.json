@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://satmouse.dev/schemas/button-event.json",
+  "title": "ButtonEvent",
+  "description": "Button press/release event from a 3D input device",
+  "type": "object",
+  "properties": {
+    "button": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based button index"
+    },
+    "pressed": {
+      "type": "boolean",
+      "description": "True when pressed, false when released"
+    },
+    "timestamp": {
+      "type": "number",
+      "description": "Microsecond timestamp (performance.now() * 1000)"
+    }
+  },
+  "required": ["button", "pressed", "timestamp"],
+  "additionalProperties": false
+}
