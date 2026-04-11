@@ -22,8 +22,11 @@ export interface ButtonEvent {
 export interface DeviceInfo {
   id: string;
   name: string;
+  model?: string;
+  vendor?: string;
   vendorId?: number;
   productId?: number;
+  connectionType?: "usb" | "wireless" | "bluetooth" | "unknown";
   connected?: boolean;
 }
 

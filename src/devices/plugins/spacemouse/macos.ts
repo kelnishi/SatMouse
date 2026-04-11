@@ -19,6 +19,32 @@ const kConnexionCmdHandleAxis = 3;
 const kConnexionCmdHandleButtons = 2;
 const kConnexionCtlActivateClient = 0x33646163; // '3dac'
 
+// 3Dconnexion product ID → device info
+// IDs from https://3dconnexion.com and USB ID database
+const SPACEMOUSE_PRODUCTS: Record<number, { model: string; connectionType: "usb" | "wireless" | "bluetooth" }> = {
+  0xc603: { model: "SpaceMouse Plus XT", connectionType: "usb" },
+  0xc605: { model: "CADMan", connectionType: "usb" },
+  0xc606: { model: "SpaceMouse Classic", connectionType: "usb" },
+  0xc621: { model: "SpaceBall 5000", connectionType: "usb" },
+  0xc623: { model: "SpaceTraveler", connectionType: "usb" },
+  0xc625: { model: "SpacePilot", connectionType: "usb" },
+  0xc626: { model: "SpaceNavigator", connectionType: "usb" },
+  0xc627: { model: "SpaceExplorer", connectionType: "usb" },
+  0xc628: { model: "SpaceNavigator for Notebooks", connectionType: "usb" },
+  0xc629: { model: "SpacePilot Pro", connectionType: "usb" },
+  0xc62b: { model: "SpaceMouse Pro", connectionType: "usb" },
+  0xc62e: { model: "SpaceMouse Wireless (cabled)", connectionType: "usb" },
+  0xc62f: { model: "SpaceMouse Wireless Receiver", connectionType: "wireless" },
+  0xc631: { model: "SpaceMouse Pro Wireless (cabled)", connectionType: "usb" },
+  0xc632: { model: "SpaceMouse Pro Wireless Receiver", connectionType: "wireless" },
+  0xc633: { model: "SpaceMouse Enterprise", connectionType: "usb" },
+  0xc635: { model: "SpaceMouse Compact", connectionType: "usb" },
+  0xc636: { model: "SpaceMouse Module", connectionType: "usb" },
+  0xc640: { model: "SpaceMouse Enterprise 2", connectionType: "usb" },
+  0xc641: { model: "CadMouse Pro", connectionType: "usb" },
+  0xc652: { model: "Universal Receiver", connectionType: "wireless" },
+};
+
 /**
  * macOS driver for 3DConnexion SpaceMouse via 3DconnexionClient.framework.
  *
@@ -160,13 +186,18 @@ export class MacOSDriver implements PlatformDriver {
     const addedHandler = koffi.register(
       (productID: number) => {
         const deviceId = `spacemouse-${productID.toString(16)}`;
-        this.devices.push({
+        const product = SPACEMOUSE_PRODUCTS[productID];
+        const info = {
           id: deviceId,
-          name: "SpaceMouse",
+          name: product?.model ?? "SpaceMouse",
+          model: product?.model ?? `Unknown (0x${productID.toString(16)})`,
+          vendor: "3Dconnexion",
           vendorId: 0x046d,
           productId: productID,
-        });
-        console.log(`[SpaceMouse/macOS] Device added: ${deviceId} (product 0x${productID.toString(16)})`);
+          connectionType: product?.connectionType ?? "unknown" as const,
+        };
+        this.devices.push(info);
+        console.log(`[SpaceMouse/macOS] Device added: ${info.model} (${info.connectionType}, 0x${productID.toString(16)})`);
         this.onDeviceAdded?.(deviceId);
       },
       koffi.pointer(AddedHandlerProto)

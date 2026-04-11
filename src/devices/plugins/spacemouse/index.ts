@@ -53,19 +53,16 @@ export class SpaceMousePlugin extends DevicePlugin {
       }
     };
     this.driver.onDeviceAdded = (id: string) => {
-      this.emit("deviceConnected", {
-        id,
-        name: "SpaceMouse",
-        vendorId: 0x046d,
-        productId: 0,
+      const device = this.driver?.getDevices().find((d) => d.id === id);
+      this.emit("deviceConnected", device ?? {
+        id, name: "SpaceMouse", model: "Unknown", vendor: "3Dconnexion",
+        vendorId: 0x046d, productId: 0, connectionType: "unknown" as const,
       });
     };
     this.driver.onDeviceRemoved = (id: string) => {
       this.emit("deviceDisconnected", {
-        id,
-        name: "SpaceMouse",
-        vendorId: 0x046d,
-        productId: 0,
+        id, name: "SpaceMouse", model: "Unknown", vendor: "3Dconnexion",
+        vendorId: 0x046d, productId: 0, connectionType: "unknown" as const,
       });
     };
     await this.driver.connect();
