@@ -47,6 +47,17 @@ cat > "$APP/Contents/Info.plist" << PLIST
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>SatMouse URL Scheme</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>satmouse</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
 PLIST

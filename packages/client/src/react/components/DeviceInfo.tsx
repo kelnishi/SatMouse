@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSatMouse } from "../hooks.js";
+import { launchSatMouse } from "../../core/launch.js";
 import type { DeviceInfo as DeviceInfoType } from "../../core/types.js";
 
 export interface DeviceInfoProps {
@@ -56,27 +57,42 @@ export function DeviceInfo({ className, timeout = 5000 }: DeviceInfoProps) {
     };
   }, [manager, state, poll]);
 
+  if (fetchState === "loading" && state !== "connected") {
+    return (
+      <div className={className} data-state="loading">
+        <span data-role="message">Waiting for bridge...</span>
+        <span
+          data-role="launch"
+          onClick={() => launchSatMouse()}
+          role="button"
+          tabIndex={0}
+        >
+          Launch SatMouse
+        </span>
+      </div>
+    );
+  }
+
   if (fetchState === "loading") {
     return (
       <div className={className} data-state="loading">
-        <span data-role="message">
-          {state === "connected" ? "Detecting devices..." : "Waiting for bridge..."}
-        </span>
+        <span data-role="message">Detecting devices...</span>
       </div>
     );
   }
 
   if (fetchState === "error" || fetchState === "empty") {
     return (
-      <div
-        className={className}
-        data-state="empty"
-        onClick={() => poll(state === "connected")}
-        role="button"
-        tabIndex={0}
-      >
+      <div className={className} data-state="empty">
         <span data-role="message">No device connected</span>
-        <span data-role="hint">Click to retry</span>
+        <span
+          data-role="hint"
+          onClick={() => poll(state === "connected")}
+          role="button"
+          tabIndex={0}
+        >
+          Click to retry
+        </span>
       </div>
     );
   }
