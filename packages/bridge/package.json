@@ -1,6 +1,6 @@
 {
   "name": "@kelnishi/satmouse",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "3DConnexion SpaceMouse bridge — run with npx @kelnishi/satmouse",
   "license": "MIT",
   "bin": {
