@@ -12,9 +12,6 @@ jobs:
           - os: macos-latest
             platform: darwin
             arch: arm64
-          - os: macos-13
-            platform: darwin
-            arch: x64
           - os: ubuntu-latest
             platform: linux
             arch: x64
@@ -39,9 +36,8 @@ jobs:
       - name: Bundle
         run: npm run build
 
-      - name: Build SEA
-        run: |
-          node --experimental-sea-config sea-config.json
+      - name: Build SEA blob
+        run: node --experimental-sea-config sea-config.json
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v4
