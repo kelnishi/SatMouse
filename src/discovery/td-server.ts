@@ -83,6 +83,9 @@ export class TDServer {
         td["satmouse:certHash"] = this.certHashBase64;
       }
 
+      // Advertise the satmouse:// connect URI
+      td["satmouse:uri"] = `satmouse://connect?host=${host}&wsPort=${this.config.wsPort}&wtPort=${this.config.wtPort}`;
+
       // Update form hrefs with runtime addresses
       if (td.properties?.deviceInfo?.forms) {
         td.properties.deviceInfo.forms[0].href = `${baseHttp}/api/device`;

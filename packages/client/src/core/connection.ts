@@ -11,6 +11,31 @@ import type {
   TransportProtocol,
 } from "./types.js";
 
+/**
+ * Build a satmouse:// connect URI from connection parameters.
+ */
+export function buildSatMouseUri(host = "localhost", wsPort = 4444, wtPort = 4443): string {
+  return `satmouse://connect?host=${encodeURIComponent(host)}&wsPort=${wsPort}&wtPort=${wtPort}`;
+}
+
+/**
+ * Parse a satmouse:// URI into connection parameters.
+ *
+ * Format: satmouse://connect?host=<ip>&wsPort=<port>&wtPort=<port>
+ * All query params are optional. Defaults: host=localhost, wsPort=4444, wtPort=4443.
+ */
+export function parseSatMouseUri(uri: string): { tdUrl: string; wsUrl: string; wtUrl: string } {
+  const url = new URL(uri);
+  const host = url.searchParams.get("host") ?? "localhost";
+  const wsPort = url.searchParams.get("wsPort") ?? "4444";
+  const wtPort = url.searchParams.get("wtPort") ?? "4443";
+  return {
+    tdUrl: `http://${host}:${wsPort}/td.json`,
+    wsUrl: `ws://${host}:${wsPort}/spatial`,
+    wtUrl: `https://${host}:${wtPort}`,
+  };
+}
+
 const DEFAULT_OPTIONS: Required<
   Pick<ConnectOptions, "transports" | "reconnectDelay" | "wsSubprotocol">
 > = {
@@ -51,10 +76,17 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
     this.intentionalClose = false;
     this.setState("connecting", "none");
 
-    // Resolve endpoints
+    // Resolve endpoints — satmouse:// URI takes priority
     let wtUrl = this.options.wtUrl;
     let wsUrl = this.options.wsUrl;
     let certHash = this.options.certHash;
+
+    if (this.options.uri) {
+      const parsed = parseSatMouseUri(this.options.uri);
+      wtUrl = wtUrl ?? parsed.wtUrl;
+      wsUrl = wsUrl ?? parsed.wsUrl;
+      this.options.tdUrl = this.options.tdUrl ?? parsed.tdUrl;
+    }
 
     if (!wtUrl && !wsUrl) {
       const tdUrl =

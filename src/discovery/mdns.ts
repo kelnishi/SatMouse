@@ -27,6 +27,7 @@ export class MDNSAdvertiser {
         wt: String(this.config.wtPort),
         ws: String(this.config.wsPort),
         type: "SpatialInput",
+        uri: `satmouse://connect?wsPort=${this.config.wsPort}&wtPort=${this.config.wtPort}`,
       },
     });
 

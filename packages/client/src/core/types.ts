@@ -61,6 +61,12 @@ export interface ThingDescription {
 }
 
 export interface ConnectOptions {
+  /**
+   * SatMouse URI: satmouse://connect?host=<ip>&wsPort=<port>&wtPort=<port>
+   * When provided, host/ports are extracted and used for discovery + transport.
+   * All params are optional — defaults to localhost:4444/4443.
+   */
+  uri?: string;
   /** URL to td.json. Defaults to /td.json relative to window.location */
   tdUrl?: string;
   /** Direct WebSocket URL (skips discovery) */
