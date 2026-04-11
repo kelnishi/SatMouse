@@ -2,6 +2,10 @@
   "name": "satmouse",
   "version": "0.1.0",
   "description": "3DConnexion SpaceMouse bridge — streams 6DOF spatial input over WebTransport and WebSocket",
+  "repository": {
+      "type": "git",
+      "url": "git@github.com:kelnishi/SatMouse.git"
+    },
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
