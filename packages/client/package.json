@@ -59,6 +59,6 @@
     "directory": "packages/client"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   }
 }

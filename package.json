@@ -6,6 +6,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "esbuild src/main.ts --bundle --platform=node --format=esm --outfile=dist/main.js --external:koffi --external:@fails-components/webtransport",
+    "build:client": "esbuild client/src/main.ts --bundle --format=esm --outfile=client/main.js --external:three",
     "build:sea": "bash scripts/build-sea.sh",
     "dev": "node --import=tsx src/main.ts",
     "typecheck": "tsc --noEmit",
