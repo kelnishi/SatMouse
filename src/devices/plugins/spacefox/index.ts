@@ -2,13 +2,12 @@ import { DevicePlugin, type DeviceInfo } from "../../types.js";
 import { createConnexionDriver, lookupProduct, buildDeviceInfo, type ConnexionDriver } from "../../drivers/connexion/index.js";
 
 /**
- * 3Dconnexion SpaceMouse plugin — 6DOF spatial input devices.
- * Covers: SpaceNavigator, SpaceMouse Pro, SpaceMouse Wireless,
- * SpaceMouse Compact, SpaceMouse Enterprise, SpacePilot, etc.
+ * 3Dconnexion SpaceFox plugin — compact 6DOF spatial input device.
+ * Same 6DOF data as SpaceMouse but in a smaller form factor.
  */
-export class SpaceMousePlugin extends DevicePlugin {
-  readonly id = "spacemouse";
-  readonly name = "3Dconnexion SpaceMouse";
+export class SpaceFoxPlugin extends DevicePlugin {
+  readonly id = "spacefox";
+  readonly name = "3Dconnexion SpaceFox";
   readonly supportedPlatforms: NodeJS.Platform[] = ["darwin", "win32", "linux"];
 
   private driver: ConnexionDriver | null = null;
@@ -27,9 +26,7 @@ export class SpaceMousePlugin extends DevicePlugin {
     if (!this.driver) this.driver = await createConnexionDriver();
 
     this.driver.onRawEvent = (event) => {
-      // Only handle spacemouse family devices
-      const product = lookupProduct(event.productId);
-      if (product.family !== "spacemouse" && product.family !== "unknown") return;
+      if (lookupProduct(event.productId).family !== "spacefox") return;
 
       if (event.command === 3) {
         this.emit("spatialData", {
@@ -50,15 +47,14 @@ export class SpaceMousePlugin extends DevicePlugin {
     };
 
     this.driver.onDeviceAdded = (productId, deviceId) => {
-      const product = lookupProduct(productId);
-      if (product.family === "spacemouse" || product.family === "unknown") {
+      if (lookupProduct(productId).family === "spacefox") {
         this.emit("deviceConnected", buildDeviceInfo(productId, deviceId));
       }
     };
 
     this.driver.onDeviceRemoved = (deviceId) => {
       this.emit("deviceDisconnected", {
-        id: deviceId, name: "SpaceMouse", model: "SpaceMouse", vendor: "3Dconnexion",
+        id: deviceId, name: "SpaceFox", model: "SpaceFox", vendor: "3Dconnexion",
         vendorId: 0x046d, productId: 0, connectionType: "unknown",
       });
     };
@@ -72,9 +68,6 @@ export class SpaceMousePlugin extends DevicePlugin {
   }
 
   getDevices(): DeviceInfo[] {
-    return (this.driver?.getDevices() ?? []).filter((d) => {
-      const product = lookupProduct(d.productId);
-      return product.family === "spacemouse" || product.family === "unknown";
-    });
+    return (this.driver?.getDevices() ?? []).filter((d) => lookupProduct(d.productId).family === "spacefox");
   }
 }

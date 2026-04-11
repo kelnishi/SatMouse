@@ -2,13 +2,12 @@ import { DevicePlugin, type DeviceInfo } from "../../types.js";
 import { createConnexionDriver, lookupProduct, buildDeviceInfo, type ConnexionDriver } from "../../drivers/connexion/index.js";
 
 /**
- * 3Dconnexion SpaceMouse plugin — 6DOF spatial input devices.
- * Covers: SpaceNavigator, SpaceMouse Pro, SpaceMouse Wireless,
- * SpaceMouse Compact, SpaceMouse Enterprise, SpacePilot, etc.
+ * 3Dconnexion Orbion plugin — rotary dial with haptic feedback.
+ * Single rotation axis + button. Maps dial rotation to RZ axis.
  */
-export class SpaceMousePlugin extends DevicePlugin {
-  readonly id = "spacemouse";
-  readonly name = "3Dconnexion SpaceMouse";
+export class OrbionPlugin extends DevicePlugin {
+  readonly id = "orbion";
+  readonly name = "3Dconnexion Orbion";
   readonly supportedPlatforms: NodeJS.Platform[] = ["darwin", "win32", "linux"];
 
   private driver: ConnexionDriver | null = null;
@@ -27,14 +26,14 @@ export class SpaceMousePlugin extends DevicePlugin {
     if (!this.driver) this.driver = await createConnexionDriver();
 
     this.driver.onRawEvent = (event) => {
-      // Only handle spacemouse family devices
       const product = lookupProduct(event.productId);
-      if (product.family !== "spacemouse" && product.family !== "unknown") return;
+      if (product.family !== "orbion") return;
 
       if (event.command === 3) {
+        // Orbion sends rotation on a single axis — map to RZ
         this.emit("spatialData", {
-          translation: { x: event.axes[0], y: event.axes[1], z: event.axes[2] },
-          rotation: { x: event.axes[3], y: event.axes[4], z: event.axes[5] },
+          translation: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: event.axes[5] },
           timestamp: performance.now() * 1000,
         });
       } else if (event.command === 2 && event.buttons !== this.prevButtons) {
@@ -50,15 +49,14 @@ export class SpaceMousePlugin extends DevicePlugin {
     };
 
     this.driver.onDeviceAdded = (productId, deviceId) => {
-      const product = lookupProduct(productId);
-      if (product.family === "spacemouse" || product.family === "unknown") {
+      if (lookupProduct(productId).family === "orbion") {
         this.emit("deviceConnected", buildDeviceInfo(productId, deviceId));
       }
     };
 
     this.driver.onDeviceRemoved = (deviceId) => {
       this.emit("deviceDisconnected", {
-        id: deviceId, name: "SpaceMouse", model: "SpaceMouse", vendor: "3Dconnexion",
+        id: deviceId, name: "Orbion", model: "Orbion", vendor: "3Dconnexion",
         vendorId: 0x046d, productId: 0, connectionType: "unknown",
       });
     };
@@ -72,9 +70,6 @@ export class SpaceMousePlugin extends DevicePlugin {
   }
 
   getDevices(): DeviceInfo[] {
-    return (this.driver?.getDevices() ?? []).filter((d) => {
-      const product = lookupProduct(d.productId);
-      return product.family === "spacemouse" || product.family === "unknown";
-    });
+    return (this.driver?.getDevices() ?? []).filter((d) => lookupProduct(d.productId).family === "orbion");
   }
 }

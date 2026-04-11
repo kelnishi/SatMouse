@@ -1,6 +1,10 @@
 import { loadConfig } from "./config.js";
 import { DeviceManager } from "./devices/manager.js";
 import { SpaceMousePlugin } from "./devices/plugins/spacemouse/index.js";
+import { OrbionPlugin } from "./devices/plugins/orbion/index.js";
+import { CadMousePlugin } from "./devices/plugins/cadmouse/index.js";
+import { SpaceFoxPlugin } from "./devices/plugins/spacefox/index.js";
+import { HIDPlugin } from "./devices/plugins/hid/index.js";
 import { TransportManager } from "./transport/index.js";
 import { MDNSAdvertiser } from "./discovery/mdns.js";
 import { TDServer } from "./discovery/td-server.js";
@@ -16,6 +20,10 @@ async function main(): Promise<void> {
   // 1. Set up device manager and register plugins
   const deviceManager = new DeviceManager();
   deviceManager.registerPlugin(new SpaceMousePlugin());
+  deviceManager.registerPlugin(new SpaceFoxPlugin());
+  deviceManager.registerPlugin(new OrbionPlugin());
+  deviceManager.registerPlugin(new CadMousePlugin());
+  deviceManager.registerPlugin(new HIDPlugin());
 
   // 2. Start device connections
   await deviceManager.start(

@@ -2,13 +2,12 @@ import { DevicePlugin, type DeviceInfo } from "../../types.js";
 import { createConnexionDriver, lookupProduct, buildDeviceInfo, type ConnexionDriver } from "../../drivers/connexion/index.js";
 
 /**
- * 3Dconnexion SpaceMouse plugin — 6DOF spatial input devices.
- * Covers: SpaceNavigator, SpaceMouse Pro, SpaceMouse Wireless,
- * SpaceMouse Compact, SpaceMouse Enterprise, SpacePilot, etc.
+ * 3Dconnexion CadMouse plugin — precision mouse with programmable buttons.
+ * No spatial axes — button events only.
  */
-export class SpaceMousePlugin extends DevicePlugin {
-  readonly id = "spacemouse";
-  readonly name = "3Dconnexion SpaceMouse";
+export class CadMousePlugin extends DevicePlugin {
+  readonly id = "cadmouse";
+  readonly name = "3Dconnexion CadMouse";
   readonly supportedPlatforms: NodeJS.Platform[] = ["darwin", "win32", "linux"];
 
   private driver: ConnexionDriver | null = null;
@@ -27,17 +26,10 @@ export class SpaceMousePlugin extends DevicePlugin {
     if (!this.driver) this.driver = await createConnexionDriver();
 
     this.driver.onRawEvent = (event) => {
-      // Only handle spacemouse family devices
       const product = lookupProduct(event.productId);
-      if (product.family !== "spacemouse" && product.family !== "unknown") return;
+      if (product.family !== "cadmouse") return;
 
-      if (event.command === 3) {
-        this.emit("spatialData", {
-          translation: { x: event.axes[0], y: event.axes[1], z: event.axes[2] },
-          rotation: { x: event.axes[3], y: event.axes[4], z: event.axes[5] },
-          timestamp: performance.now() * 1000,
-        });
-      } else if (event.command === 2 && event.buttons !== this.prevButtons) {
+      if (event.command === 2 && event.buttons !== this.prevButtons) {
         const timestamp = performance.now() * 1000;
         for (let i = 0; i < 32; i++) {
           const mask = 1 << i;
@@ -50,15 +42,14 @@ export class SpaceMousePlugin extends DevicePlugin {
     };
 
     this.driver.onDeviceAdded = (productId, deviceId) => {
-      const product = lookupProduct(productId);
-      if (product.family === "spacemouse" || product.family === "unknown") {
+      if (lookupProduct(productId).family === "cadmouse") {
         this.emit("deviceConnected", buildDeviceInfo(productId, deviceId));
       }
     };
 
     this.driver.onDeviceRemoved = (deviceId) => {
       this.emit("deviceDisconnected", {
-        id: deviceId, name: "SpaceMouse", model: "SpaceMouse", vendor: "3Dconnexion",
+        id: deviceId, name: "CadMouse", model: "CadMouse", vendor: "3Dconnexion",
         vendorId: 0x046d, productId: 0, connectionType: "unknown",
       });
     };
@@ -72,9 +63,6 @@ export class SpaceMousePlugin extends DevicePlugin {
   }
 
   getDevices(): DeviceInfo[] {
-    return (this.driver?.getDevices() ?? []).filter((d) => {
-      const product = lookupProduct(d.productId);
-      return product.family === "spacemouse" || product.family === "unknown";
-    });
+    return (this.driver?.getDevices() ?? []).filter((d) => lookupProduct(d.productId).family === "cadmouse");
   }
 }
