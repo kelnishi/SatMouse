@@ -24,15 +24,41 @@
       <canvas id="canvas"></canvas>
     </section>
     <aside id="sidebar">
-      <h2>Events</h2>
+      <h2>Axes</h2>
       <div id="spatial-readout">
-        <div class="axis-row"><label>TX</label><span id="val-tx">0</span></div>
-        <div class="axis-row"><label>TY</label><span id="val-ty">0</span></div>
-        <div class="axis-row"><label>TZ</label><span id="val-tz">0</span></div>
-        <div class="axis-row"><label>RX</label><span id="val-rx">0</span></div>
-        <div class="axis-row"><label>RY</label><span id="val-ry">0</span></div>
-        <div class="axis-row"><label>RZ</label><span id="val-rz">0</span></div>
+        <div class="axis-row"><label>TX</label><span id="val-tx">0</span><input type="checkbox" class="flip-cb" data-axis="tx" title="Flip TX"></div>
+        <div class="axis-row"><label>TY</label><span id="val-ty">0</span><input type="checkbox" class="flip-cb" data-axis="ty" title="Flip TY"></div>
+        <div class="axis-row"><label>TZ</label><span id="val-tz">0</span><input type="checkbox" class="flip-cb" data-axis="tz" title="Flip TZ"></div>
+        <div class="axis-row"><label>RX</label><span id="val-rx">0</span><input type="checkbox" class="flip-cb" data-axis="rx" title="Flip RX"></div>
+        <div class="axis-row"><label>RY</label><span id="val-ry">0</span><input type="checkbox" class="flip-cb" data-axis="ry" title="Flip RY"></div>
+        <div class="axis-row"><label>RZ</label><span id="val-rz">0</span><input type="checkbox" class="flip-cb" data-axis="rz" title="Flip RZ"></div>
       </div>
+
+      <h2>Sensitivity</h2>
+      <div class="slider-row">
+        <label>Trans</label>
+        <input type="range" id="slider-trans" min="0" max="100" value="37">
+        <span id="slider-trans-val">0.0010</span>
+      </div>
+      <div class="slider-row">
+        <label>Rot</label>
+        <input type="range" id="slider-rot" min="0" max="100" value="37">
+        <span id="slider-rot-val">0.0010</span>
+      </div>
+
+      <h2>Controls</h2>
+      <div class="controls">
+        <button id="btn-reset">Reset</button>
+        <div class="toggle-row">
+          <button id="btn-lock-pos" class="toggle">Lock Position</button>
+          <button id="btn-lock-rot" class="toggle">Lock Rotation</button>
+        </div>
+        <div class="toggle-row">
+          <button id="btn-lock-orbit" class="toggle">Lock Orbit</button>
+          <button id="btn-dominant" class="toggle">Dominant</button>
+        </div>
+      </div>
+
       <h3>Button Log</h3>
       <div id="button-log"></div>
     </aside>

@@ -1,4 +1,4 @@
-import { init, update } from "./cube.js";
+import { init, update, reset, setLockPosition, setLockRotation, setLockOrbit, setDominant, setFlip, getFlip, setSensitivity } from "./cube.js";
 
 // DOM elements
 const canvas = document.getElementById("canvas");
@@ -15,10 +15,78 @@ const valRx = document.getElementById("val-rx");
 const valRy = document.getElementById("val-ry");
 const valRz = document.getElementById("val-rz");
 
+// Control buttons
+const btnReset = document.getElementById("btn-reset");
+const btnLockPos = document.getElementById("btn-lock-pos");
+const btnLockRot = document.getElementById("btn-lock-rot");
+const btnLockOrbit = document.getElementById("btn-lock-orbit");
+const btnDominant = document.getElementById("btn-dominant");
+
+// Sensitivity sliders — exponential mapping from 0-100 to useful range
+const sliderTrans = document.getElementById("slider-trans");
+const sliderTransVal = document.getElementById("slider-trans-val");
+const sliderRot = document.getElementById("slider-rot");
+const sliderRotVal = document.getElementById("slider-rot-val");
+
+function mapSlider(v) {
+  // 0 → 0.0001, 50 → 0.005, 100 → 0.05 (exponential)
+  return 0.0001 * Math.pow(500, v / 100);
+}
+
+sliderTrans.addEventListener("input", () => {
+  const v = mapSlider(+sliderTrans.value);
+  setSensitivity("t", v);
+  sliderTransVal.textContent = v.toFixed(4);
+});
+
+sliderRot.addEventListener("input", () => {
+  const v = mapSlider(+sliderRot.value);
+  setSensitivity("r", v);
+  sliderRotVal.textContent = v.toFixed(4);
+});
+
+// Set initial display values
+sliderTransVal.textContent = mapSlider(+sliderTrans.value).toFixed(4);
+sliderRotVal.textContent = mapSlider(+sliderRot.value).toFixed(4);
+setSensitivity("t", mapSlider(+sliderTrans.value));
+setSensitivity("r", mapSlider(+sliderRot.value));
+
 // Initialize 3D scene
 init(canvas);
 
-// Connection state
+// Flip checkboxes — sync initial state from cube defaults and wire events
+document.querySelectorAll(".flip-cb").forEach(cb => {
+  const axis = cb.dataset.axis;
+  cb.checked = getFlip(axis);
+  cb.addEventListener("change", () => setFlip(axis, cb.checked));
+});
+
+// --- Controls ---
+
+btnReset.addEventListener("click", reset);
+
+btnLockPos.addEventListener("click", () => {
+  btnLockPos.classList.toggle("active");
+  setLockPosition(btnLockPos.classList.contains("active"));
+});
+
+btnLockRot.addEventListener("click", () => {
+  btnLockRot.classList.toggle("active");
+  setLockRotation(btnLockRot.classList.contains("active"));
+});
+
+btnLockOrbit.addEventListener("click", () => {
+  btnLockOrbit.classList.toggle("active");
+  setLockOrbit(btnLockOrbit.classList.contains("active"));
+});
+
+btnDominant.addEventListener("click", () => {
+  btnDominant.classList.toggle("active");
+  setDominant(btnDominant.classList.contains("active"));
+});
+
+// --- Connection ---
+
 let connected = false;
 
 function setStatus(state, text, protocol) {
@@ -44,7 +112,6 @@ function handleButtonEvent(data) {
   entry.textContent = `btn ${data.button} ${data.pressed ? "pressed" : "released"}`;
   buttonLog.insertBefore(entry, buttonLog.firstChild);
 
-  // Keep log manageable
   while (buttonLog.children.length > 50) {
     buttonLog.removeChild(buttonLog.lastChild);
   }
@@ -86,7 +153,6 @@ async function connectWebTransport(url, certHash) {
     await transport.ready;
     setStatus("connected", "Connected", "WebTransport");
 
-    // Read datagrams (spatial data)
     const reader = transport.datagrams.readable.getReader();
     (async () => {
       try {
@@ -100,7 +166,6 @@ async function connectWebTransport(url, certHash) {
       }
     })();
 
-    // Read incoming unidirectional streams (button events)
     const streamReader = transport.incomingUnidirectionalStreams.getReader();
     (async () => {
       try {
@@ -134,13 +199,11 @@ async function readButtonStream(stream) {
       const { value, done } = await reader.read();
       if (done) break;
 
-      // Append to buffer
       const newBuf = new Uint8Array(buffer.length + value.length);
       newBuf.set(buffer);
       newBuf.set(value, buffer.length);
       buffer = newBuf;
 
-      // Parse length-prefixed JSON messages
       while (buffer.length >= 4) {
         const len = new DataView(buffer.buffer).getUint32(0, true);
         if (buffer.length < 4 + len) break;
@@ -180,7 +243,6 @@ function connectWebSocket(url) {
 
   ws.onclose = () => {
     setStatus("", "Disconnected", "");
-    // Reconnect after delay
     setTimeout(() => connectWebSocket(url), 2000);
   };
 
@@ -192,7 +254,6 @@ function connectWebSocket(url) {
 // --- Discovery & connection ---
 
 async function discover() {
-  // Try to fetch td.json from the same host (served by SatMouse)
   const tdUrl = new URL("/td.json", window.location.origin).href;
 
   try {
@@ -202,19 +263,16 @@ async function discover() {
 
     console.log("Thing Description loaded:", td.title);
 
-    // Find WebTransport and WebSocket endpoints from event forms
     const forms = td.events?.spatialData?.forms ?? [];
     const wtForm = forms.find(f => f.subprotocol === "webtransport");
     const wsForm = forms.find(f => f.subprotocol === "websocket");
 
-    // Try WebTransport first (with cert hash for self-signed certs)
     const certHash = td["satmouse:certHash"];
     if (wtForm && typeof WebTransport !== "undefined") {
       const success = await connectWebTransport(wtForm.href, certHash);
       if (success) return;
     }
 
-    // Fall back to WebSocket
     if (wsForm) {
       connectWebSocket(wsForm.href);
       return;
@@ -223,7 +281,6 @@ async function discover() {
     setStatus("", "No endpoints found in TD", "");
   } catch (err) {
     console.warn("Discovery failed, falling back to default WebSocket:", err.message);
-    // Fall back to default WebSocket endpoint on same host
     const wsUrl = `ws://${window.location.hostname}:${window.location.port}/spatial`;
     connectWebSocket(wsUrl);
   }

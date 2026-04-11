@@ -81,6 +81,7 @@ main {
   margin-bottom: 8px;
 }
 
+#sidebar h2 + h2,
 #sidebar h3 {
   margin-top: 16px;
 }
@@ -103,7 +104,96 @@ main {
   color: #3498db;
   text-align: right;
   min-width: 60px;
+  flex: 1;
 }
+
+.flip-cb {
+  margin-left: 6px;
+  accent-color: #e74c3c;
+  cursor: pointer;
+}
+
+/* Sliders */
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+
+.slider-row label {
+  color: #7f8c8d;
+  font-weight: 600;
+  width: 38px;
+  flex-shrink: 0;
+}
+
+.slider-row input[type="range"] {
+  flex: 1;
+  height: 4px;
+  accent-color: #3498db;
+  cursor: pointer;
+}
+
+.slider-row span {
+  color: #7f8c8d;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 10px;
+  min-width: 44px;
+  text-align: right;
+}
+
+/* Controls */
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.controls button {
+  background: #0f3460;
+  color: #e0e0e0;
+  border: 1px solid #1a4a8a;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.controls button:hover {
+  background: #1a4a8a;
+}
+
+.controls button.toggle.active {
+  background: #2980b9;
+  border-color: #3498db;
+  color: #fff;
+}
+
+.toggle-row {
+  display: flex;
+  gap: 6px;
+}
+
+.toggle-row button {
+  flex: 1;
+}
+
+#btn-reset {
+  background: #1a1a2e;
+  border-color: #7f8c8d;
+}
+
+#btn-reset:hover {
+  background: #2c3e50;
+}
+
+/* Button log */
 
 #button-log {
   font-size: 11px;
