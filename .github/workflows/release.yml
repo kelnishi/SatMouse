@@ -46,11 +46,16 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cp "$(command -v node)" "dist/satmouse${{ matrix.ext }}"
+          chmod u+w "dist/satmouse${{ matrix.ext }}"
           if [[ "${{ matrix.platform }}" == "darwin" ]]; then
             codesign --remove-signature "dist/satmouse" || true
+            npx postject "dist/satmouse" NODE_SEA_BLOB dist/satmouse.blob \
+              --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 \
+              --macho-segment-name NODE_SEA
+          else
+            npx postject "dist/satmouse" NODE_SEA_BLOB dist/satmouse.blob \
+              --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
           fi
-          npx postject "dist/satmouse${{ matrix.ext }}" NODE_SEA_BLOB dist/satmouse.blob \
-            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
 
       - name: Create SEA binary (Windows)
         if: runner.os == 'Windows'
@@ -60,14 +65,17 @@ jobs:
           npx postject "dist/satmouse.exe" NODE_SEA_BLOB dist/satmouse.blob `
             --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
 
-      - name: Code sign (macOS)
+      - name: Package macOS .app
         if: matrix.platform == 'darwin'
         env:
+          SATMOUSE_VERSION: ${{ github.ref_name }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [ -n "$APPLE_CERTIFICATE" ]; then
+          bash scripts/package-macos-app.sh dist/satmouse
+          # Code sign the .app bundle
+          if [ -n "${APPLE_CERTIFICATE:-}" ]; then
             echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
             KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
             security create-keychain -p "" "$KEYCHAIN_PATH"
@@ -75,18 +83,33 @@ jobs:
             security unlock-keychain -p "" "$KEYCHAIN_PATH"
             security import cert.p12 -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
             security list-keychain -d user -s "$KEYCHAIN_PATH"
-            codesign --sign "Developer ID Application" --options runtime dist/satmouse
+            codesign --sign "Developer ID Application" --options runtime --deep dist/SatMouse.app
             rm cert.p12
           else
-            codesign --sign - dist/satmouse
+            codesign --sign - --deep dist/SatMouse.app
           fi
+          cd dist && zip -r ../SatMouse-macOS-${{ matrix.arch }}.zip SatMouse.app
 
-      - name: Package
+      - name: Package Linux
+        if: matrix.platform == 'linux'
         run: |
           cd dist
-          tar czf ../satmouse-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz satmouse${{ matrix.ext }}
+          tar czf ../satmouse-linux-${{ matrix.arch }}.tar.gz satmouse
 
-      - name: Upload release asset
+      - name: Package Windows
+        if: matrix.platform == 'win32'
+        run: |
+          cd dist
+          tar czf ../satmouse-win32-${{ matrix.arch }}.tar.gz satmouse.exe
+
+      - name: Upload release asset (macOS)
+        if: matrix.platform == 'darwin'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: SatMouse-macOS-${{ matrix.arch }}.zip
+
+      - name: Upload release asset (Linux/Windows)
+        if: matrix.platform != 'darwin'
         uses: softprops/action-gh-release@v2
         with:
           files: satmouse-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
