@@ -1,5 +1,6 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import type { SatMouseConfig } from "../config.js";
@@ -15,10 +16,23 @@ export class TDServer {
   private server: Server | null = null;
   private config: SatMouseConfig;
   private deviceManager: DeviceManager;
+  private certHashBase64: string | null = null;
 
   constructor(config: SatMouseConfig, deviceManager: DeviceManager) {
     this.config = config;
     this.deviceManager = deviceManager;
+
+    // Compute cert hash for WebTransport serverCertificateHashes
+    const certPath = join(config.certsDir, "cert.pem");
+    if (existsSync(certPath)) {
+      const pem = readFileSync(certPath, "utf-8");
+      // Extract DER from PEM
+      const b64 = pem.replace(/-----[^-]+-----/g, "").replace(/\s/g, "");
+      const der = Buffer.from(b64, "base64");
+      const hash = createHash("sha256").update(der).digest("base64");
+      this.certHashBase64 = hash;
+      console.log(`[TDServer] Cert SHA-256: ${hash}`);
+    }
   }
 
   start(): Server {
@@ -63,6 +77,11 @@ export class TDServer {
       // Update base URL references
       td.base = baseHttp;
       td.id = `urn:satmouse:bridge:${host}`;
+
+      // Include cert hash for WebTransport serverCertificateHashes
+      if (this.certHashBase64) {
+        td["satmouse:certHash"] = this.certHashBase64;
+      }
 
       // Update form hrefs with runtime addresses
       if (td.properties?.deviceInfo?.forms) {

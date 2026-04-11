@@ -20,8 +20,10 @@ export class SpaceMousePlugin extends DevicePlugin {
   async isAvailable(): Promise<boolean> {
     try {
       const driver = await this.loadDriver();
-      return driver.probe();
-    } catch {
+      const available = driver.probe();
+      return available;
+    } catch (err) {
+      console.log(`[SpaceMouse] isAvailable check failed:`, err);
       return false;
     }
   }

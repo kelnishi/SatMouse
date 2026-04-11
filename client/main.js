@@ -207,9 +207,10 @@ async function discover() {
     const wtForm = forms.find(f => f.subprotocol === "webtransport");
     const wsForm = forms.find(f => f.subprotocol === "websocket");
 
-    // Try WebTransport first
+    // Try WebTransport first (with cert hash for self-signed certs)
+    const certHash = td["satmouse:certHash"];
     if (wtForm && typeof WebTransport !== "undefined") {
-      const success = await connectWebTransport(wtForm.href, td.satmouse?.certHash);
+      const success = await connectWebTransport(wtForm.href, certHash);
       if (success) return;
     }
 
