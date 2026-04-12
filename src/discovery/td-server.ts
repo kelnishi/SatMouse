@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import type { SatMouseConfig } from "../config.js";
 import type { DeviceManager } from "../devices/manager.js";
+import { resolveResource } from "../resources.js";
 
 /**
  * HTTP server that serves:
@@ -71,7 +72,7 @@ export class TDServer {
 
     // Load the static TD template and populate with runtime values
     try {
-      const tdPath = resolve("specs/td.json");
+      const tdPath = resolveResource("specs/td.json");
       const td = JSON.parse(readFileSync(tdPath, "utf-8"));
 
       // Update base URL references
@@ -121,11 +122,11 @@ export class TDServer {
 
   private serveClient(url: string, res: ServerResponse): void {
     // Map /client or /client/ to /client/index.html
-    let filePath = url === "/client" || url === "/client/" ? "/client/index.html" : url;
-    filePath = resolve("." + filePath);
+    let relPath = url === "/client" || url === "/client/" ? "client/index.html" : url.slice(1);
+    const filePath = resolveResource(relPath);
 
     // Basic security: ensure we're still inside the client directory
-    const clientDir = resolve("./client");
+    const clientDir = resolveResource("client");
     if (!filePath.startsWith(clientDir)) {
       res.writeHead(403, { "Content-Type": "text/plain" });
       res.end("Forbidden");

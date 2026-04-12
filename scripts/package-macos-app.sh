@@ -15,9 +15,41 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
 
-# Copy binary
-cp "$BINARY" "$APP/Contents/MacOS/satmouse"
+# Copy the SEA binary as the actual executable
+cp "$BINARY" "$APP/Contents/MacOS/satmouse-bin"
+chmod +x "$APP/Contents/MacOS/satmouse-bin"
+
+# Create a launcher script that sets NODE_PATH for native addons
+cat > "$APP/Contents/MacOS/satmouse" << 'LAUNCHER'
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+export NODE_PATH="$DIR/../Resources/node_modules"
+exec "$DIR/satmouse-bin" "$@"
+LAUNCHER
 chmod +x "$APP/Contents/MacOS/satmouse"
+
+# Copy native addon node_modules into Resources
+# These can't be embedded in the SEA blob — they must ship alongside
+if [ -d "node_modules/koffi" ]; then
+  echo "Bundling koffi native addon..."
+  mkdir -p "$APP/Contents/Resources/node_modules"
+  cp -R node_modules/koffi "$APP/Contents/Resources/node_modules/"
+fi
+
+if [ -d "node_modules/@fails-components" ]; then
+  echo "Bundling @fails-components native addons..."
+  mkdir -p "$APP/Contents/Resources/node_modules/@fails-components"
+  cp -R node_modules/@fails-components "$APP/Contents/Resources/node_modules/"
+fi
+
+# Copy specs and client for the built-in web server
+if [ -d "specs" ]; then
+  cp -R specs "$APP/Contents/Resources/"
+fi
+if [ -d "client" ]; then
+  mkdir -p "$APP/Contents/Resources/client"
+  cp client/index.html client/style.css client/main.js "$APP/Contents/Resources/client/" 2>/dev/null || true
+fi
 
 # Info.plist
 cat > "$APP/Contents/Info.plist" << PLIST
@@ -66,5 +98,7 @@ PLIST
 echo -n "APPL????" > "$APP/Contents/PkgInfo"
 
 echo "=== Created $APP ==="
-echo "  Binary: $APP/Contents/MacOS/satmouse"
+echo "  Launcher: $APP/Contents/MacOS/satmouse"
+echo "  Binary:   $APP/Contents/MacOS/satmouse-bin"
+echo "  Addons:   $APP/Contents/Resources/node_modules/"
 echo "  LSUIElement: true (menu bar only, no dock icon)"
