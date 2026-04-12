@@ -274,6 +274,72 @@
     .code-block .str { color: #2ecc71; }
     .code-block .cmt { color: #7f8c8d; }
 
+    /* Tabs */
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 0;
+    }
+
+    .tab {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab:hover { color: var(--text); }
+
+    .tab.active {
+      background: var(--surface);
+      color: var(--accent-glow);
+      border-color: var(--border);
+    }
+
+    .tab-bar + .code-block,
+    .tab-bar ~ .code-block {
+      border-top-left-radius: 0;
+      margin-top: 0;
+    }
+
+    /* Module grid */
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .module {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .module h4 {
+      font-size: 14px;
+      color: var(--accent-glow);
+      font-family: "SF Mono", "Fira Code", monospace;
+      margin-bottom: 6px;
+    }
+
+    .module p {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    @media (max-width: 640px) {
+      .module-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
     /* Footer */
     footer {
       text-align: center;
@@ -388,8 +454,13 @@
   <section class="developers">
     <div class="container">
       <h2>For Developers</h2>
-      <p>Add spatial input to your web app in minutes.</p>
-      <div class="code-block">
+      <p>Add spatial input to your web app in minutes. Four tree-shakeable modules.</p>
+      <div class="tab-bar">
+        <button class="tab active" data-tab="vanilla">Vanilla</button>
+        <button class="tab" data-tab="react">React</button>
+        <button class="tab" data-tab="elements">Web Components</button>
+      </div>
+      <div class="code-block" id="tab-vanilla">
         <span class="cmt">// npm install @kelnishi/satmouse-client</span><br>
         <span class="kw">import</span> { SatMouseConnection } <span class="kw">from</span> <span class="str">"@kelnishi/satmouse-client"</span>;<br>
         <span class="kw">import</span> { InputManager } <span class="kw">from</span> <span class="str">"@kelnishi/satmouse-client/utils"</span>;<br>
@@ -404,7 +475,59 @@
         <br>
         <span class="kw">await</span> connection.connect();
       </div>
-      <div style="text-align: center;">
+      <div class="code-block" id="tab-react" style="display: none;">
+        <span class="cmt">// npm install @kelnishi/satmouse-client</span><br>
+        <span class="kw">import</span> { SatMouseProvider, useSpatialData } <span class="kw">from</span> <span class="str">"@kelnishi/satmouse-client/react"</span>;<br>
+        <br>
+        <span class="kw">function</span> App() {<br>
+        &nbsp;&nbsp;<span class="kw">return</span> (<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&lt;SatMouseProvider&gt;<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;Scene /&gt;<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&lt;/SatMouseProvider&gt;<br>
+        &nbsp;&nbsp;);<br>
+        }<br>
+        <br>
+        <span class="kw">function</span> Scene() {<br>
+        &nbsp;&nbsp;<span class="kw">const</span> data = useSpatialData();<br>
+        &nbsp;&nbsp;<span class="cmt">// data.translation.x/y/z, data.rotation.x/y/z</span><br>
+        }
+      </div>
+      <div class="code-block" id="tab-elements" style="display: none;">
+        <span class="cmt">// npm install @kelnishi/satmouse-client</span><br>
+        <span class="kw">import</span> { SatMouseConnection } <span class="kw">from</span> <span class="str">"@kelnishi/satmouse-client"</span>;<br>
+        <span class="kw">import</span> { InputManager } <span class="kw">from</span> <span class="str">"@kelnishi/satmouse-client/utils"</span>;<br>
+        <span class="kw">import</span> { registerSatMouse } <span class="kw">from</span> <span class="str">"@kelnishi/satmouse-client/elements"</span>;<br>
+        <br>
+        <span class="kw">const</span> connection = <span class="kw">new</span> SatMouseConnection();<br>
+        <span class="kw">const</span> manager = <span class="kw">new</span> InputManager();<br>
+        manager.addConnection(connection);<br>
+        registerSatMouse(manager);<br>
+        <span class="kw">await</span> connection.connect();<br>
+        <br>
+        <span class="cmt">// Then in your HTML:</span><br>
+        <span class="cmt">// &lt;satmouse-status&gt;&lt;/satmouse-status&gt;</span><br>
+        <span class="cmt">// &lt;satmouse-devices&gt;&lt;/satmouse-devices&gt;</span><br>
+        <span class="cmt">// &lt;satmouse-debug&gt;&lt;/satmouse-debug&gt;</span>
+      </div>
+      <div class="module-grid">
+        <div class="module">
+          <h4>core</h4>
+          <p>Connection, discovery, binary decode. Zero deps.</p>
+        </div>
+        <div class="module">
+          <h4>utils</h4>
+          <p>InputManager, transforms, per-device config, multi-device merge.</p>
+        </div>
+        <div class="module">
+          <h4>react</h4>
+          <p>Provider, hooks, settings &amp; debug components.</p>
+        </div>
+        <div class="module">
+          <h4>elements</h4>
+          <p>Web Components with Shadow DOM. Works in any framework.</p>
+        </div>
+      </div>
+      <div style="text-align: center; margin-top: 20px;">
         <a href="https://github.com/kelnishi/SatMouse#client-sdk" class="btn btn-secondary">SDK Documentation</a>
       </div>
     </div>
@@ -421,5 +544,15 @@
     </div>
   </footer>
 
+  <script>
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+        tab.classList.add("active");
+        document.querySelectorAll("[id^='tab-']").forEach(el => el.style.display = "none");
+        document.getElementById("tab-" + tab.dataset.tab).style.display = "";
+      });
+    });
+  </script>
 </body>
 </html>
