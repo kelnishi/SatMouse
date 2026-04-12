@@ -390,6 +390,57 @@ var SatMouseConnection = class extends TypedEmitter {
   }
 };
 
+// packages/client/src/utils/action-map.ts
+var DEFAULT_ACTION_MAP = {
+  tx: { source: "tx" },
+  ty: { source: "ty" },
+  tz: { source: "tz" },
+  rx: { source: "rx" },
+  ry: { source: "ry" },
+  rz: { source: "rz" }
+};
+function readAxis(data, axis) {
+  switch (axis) {
+    case "tx":
+      return data.translation.x;
+    case "ty":
+      return data.translation.y;
+    case "tz":
+      return data.translation.z;
+    case "rx":
+      return data.rotation.x;
+    case "ry":
+      return data.rotation.y;
+    case "rz":
+      return data.rotation.z;
+  }
+}
+function applyActionMap(data, map) {
+  const result = {};
+  for (const [action, binding] of Object.entries(map)) {
+    let value = readAxis(data, binding.source);
+    if (binding.invert) value = -value;
+    value *= binding.scale ?? 1;
+    result[action] = value;
+  }
+  return result;
+}
+function actionValuesToSpatialData(values, timestamp) {
+  return {
+    translation: {
+      x: values.tx ?? 0,
+      y: values.ty ?? 0,
+      z: values.tz ?? 0
+    },
+    rotation: {
+      x: values.rx ?? 0,
+      y: values.ry ?? 0,
+      z: values.rz ?? 0
+    },
+    timestamp
+  };
+}
+
 // packages/client/src/utils/config.ts
 var DEFAULT_CONFIG = {
   sensitivity: { translation: 1e-3, rotation: 1e-3 },
@@ -398,15 +449,60 @@ var DEFAULT_CONFIG = {
   dominant: false,
   axisRemap: { tx: "x", ty: "y", tz: "z", rx: "x", ry: "y", rz: "z" },
   lockPosition: false,
-  lockRotation: false
+  lockRotation: false,
+  actionMap: { ...DEFAULT_ACTION_MAP },
+  devices: {}
 };
 function mergeConfig(base, partial) {
-  return {
+  const merged = {
     ...base,
     ...partial,
     sensitivity: { ...base.sensitivity, ...partial.sensitivity },
     flip: { ...base.flip, ...partial.flip },
-    axisRemap: { ...base.axisRemap, ...partial.axisRemap }
+    axisRemap: { ...base.axisRemap, ...partial.axisRemap },
+    actionMap: partial.actionMap ? { ...base.actionMap, ...partial.actionMap } : { ...base.actionMap },
+    devices: { ...base.devices }
+  };
+  if (partial.devices) {
+    for (const [key, devCfg] of Object.entries(partial.devices)) {
+      merged.devices[key] = mergeDeviceConfig(merged.devices[key], devCfg);
+    }
+  }
+  return merged;
+}
+function mergeDeviceConfig(base, partial) {
+  if (!base) return partial;
+  return {
+    ...base,
+    ...partial,
+    sensitivity: partial.sensitivity ? { ...base.sensitivity, ...partial.sensitivity } : base.sensitivity,
+    flip: partial.flip ? { ...base.flip, ...partial.flip } : base.flip,
+    axisRemap: partial.axisRemap ? { ...base.axisRemap, ...partial.axisRemap } : base.axisRemap
+  };
+}
+function resolveDeviceConfig(config, deviceId) {
+  let deviceOverride;
+  if (config.devices[deviceId]) {
+    deviceOverride = config.devices[deviceId];
+  } else {
+    for (const [pattern, cfg] of Object.entries(config.devices)) {
+      if (pattern.endsWith("*") && deviceId.startsWith(pattern.slice(0, -1))) {
+        deviceOverride = cfg;
+        break;
+      }
+    }
+  }
+  if (!deviceOverride) return config;
+  return {
+    ...config,
+    sensitivity: { ...config.sensitivity, ...deviceOverride.sensitivity },
+    flip: { ...config.flip, ...deviceOverride.flip },
+    deadZone: deviceOverride.deadZone ?? config.deadZone,
+    dominant: deviceOverride.dominant ?? config.dominant,
+    axisRemap: { ...config.axisRemap, ...deviceOverride.axisRemap },
+    actionMap: deviceOverride.actionMap ? { ...config.actionMap, ...deviceOverride.actionMap } : config.actionMap,
+    lockPosition: deviceOverride.lockPosition ?? config.lockPosition,
+    lockRotation: deviceOverride.lockRotation ?? config.lockRotation
   };
 }
 
@@ -518,6 +614,7 @@ function applyAxisRemap(data, map) {
 var InputManager = class extends TypedEmitter {
   connections = [];
   storage;
+  knownDevices = /* @__PURE__ */ new Map();
   _config;
   get config() {
     return this._config;
@@ -550,11 +647,43 @@ var InputManager = class extends TypedEmitter {
   /** Fetch device info from all connections */
   async fetchDeviceInfo() {
     const results = await Promise.all(this.connections.map((c) => c.fetchDeviceInfo()));
-    return results.flat();
+    const devices = results.flat();
+    for (const d of devices) this.knownDevices.set(d.id, d);
+    return devices;
   }
-  /** Update configuration. Persists by default. */
+  /** Get all known connected devices paired with their resolved config */
+  getDevicesWithConfig() {
+    return Array.from(this.knownDevices.values()).map((device) => ({
+      device,
+      config: this.getDeviceConfig(device.id)
+    }));
+  }
+  /** Get the resolved per-device config (global defaults + device overrides) */
+  getDeviceConfig(deviceId) {
+    const resolved = resolveDeviceConfig(this._config, deviceId);
+    return {
+      sensitivity: resolved.sensitivity,
+      flip: resolved.flip,
+      deadZone: resolved.deadZone,
+      dominant: resolved.dominant,
+      axisRemap: resolved.axisRemap,
+      actionMap: resolved.actionMap,
+      lockPosition: resolved.lockPosition,
+      lockRotation: resolved.lockRotation
+    };
+  }
+  /** Update global configuration. Persists by default. */
   updateConfig(partial, persist = true) {
     this._config = mergeConfig(this._config, partial);
+    if (persist) saveSettings(this._config, this.storage);
+    this.emit("configChange", this._config);
+  }
+  /** Update configuration for a specific device. Persists by default. */
+  updateDeviceConfig(deviceId, partial, persist = true) {
+    const existing = this._config.devices[deviceId] ?? {};
+    this._config = mergeConfig(this._config, {
+      devices: { [deviceId]: { ...existing, ...partial } }
+    });
     if (persist) saveSettings(this._config, this.storage);
     this.emit("configChange", this._config);
   }
@@ -568,15 +697,25 @@ var InputManager = class extends TypedEmitter {
     this.on("buttonEvent", callback);
     return () => this.off("buttonEvent", callback);
   }
+  /** Register a callback for action values. Returns unsubscribe function. */
+  onActionValues(callback) {
+    this.on("actionValues", callback);
+    return () => this.off("actionValues", callback);
+  }
   wireConnection(connection2) {
     connection2.on("spatialData", (raw) => {
       this.emit("rawSpatialData", raw);
-      const processed = this.processSpatialData(raw);
-      if (processed) this.emit("spatialData", processed);
+      const { spatial, actions } = this.processSpatialData(raw);
+      if (spatial) this.emit("spatialData", spatial);
+      if (actions) this.emit("actionValues", actions);
     });
     connection2.on("buttonEvent", (event) => this.emit("buttonEvent", event));
     connection2.on("stateChange", (state, proto) => this.emit("stateChange", state, proto));
-    connection2.on("deviceStatus", (event, device) => this.emit("deviceStatus", event, device));
+    connection2.on("deviceStatus", (event, device) => {
+      if (event === "connected") this.knownDevices.set(device.id, device);
+      else this.knownDevices.delete(device.id);
+      this.emit("deviceStatus", event, device);
+    });
   }
   processSpatialData(raw) {
     const cfg = this._config;
@@ -592,7 +731,9 @@ var InputManager = class extends TypedEmitter {
     if (cfg.lockRotation) {
       data = { ...data, rotation: { x: 0, y: 0, z: 0 } };
     }
-    return data;
+    const actions = applyActionMap(data, cfg.actionMap);
+    const spatial = actionValuesToSpatialData(actions, data.timestamp);
+    return { spatial, actions };
   }
 };
 

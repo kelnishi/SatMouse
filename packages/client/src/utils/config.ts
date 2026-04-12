@@ -1,4 +1,5 @@
 import type { FlipConfig, SensitivityConfig, AxisMap } from "./transforms.js";
+import { DEFAULT_ACTION_MAP, type ActionMap } from "./action-map.js";
 
 /** Per-device transform overrides. Any field left undefined inherits from global defaults. */
 export interface DeviceConfig {
@@ -7,6 +8,7 @@ export interface DeviceConfig {
   deadZone?: number;
   dominant?: boolean;
   axisRemap?: Partial<AxisMap>;
+  actionMap?: ActionMap;
   lockPosition?: boolean;
   lockRotation?: boolean;
 }
@@ -20,6 +22,9 @@ export interface InputConfig {
   axisRemap: AxisMap;
   lockPosition: boolean;
   lockRotation: boolean;
+
+  /** Action map — maps input axes to named output actions. Default: passthrough. */
+  actionMap: ActionMap;
 
   /**
    * Per-device overrides, keyed by device ID (e.g., "spacemouse-c635")
@@ -37,6 +42,7 @@ export const DEFAULT_CONFIG: InputConfig = {
   axisRemap: { tx: "x", ty: "y", tz: "z", rx: "x", ry: "y", rz: "z" },
   lockPosition: false,
   lockRotation: false,
+  actionMap: { ...DEFAULT_ACTION_MAP },
   devices: {},
 };
 
@@ -47,6 +53,7 @@ export function mergeConfig(base: InputConfig, partial: Partial<InputConfig>): I
     sensitivity: { ...base.sensitivity, ...partial.sensitivity },
     flip: { ...base.flip, ...partial.flip },
     axisRemap: { ...base.axisRemap, ...partial.axisRemap },
+    actionMap: partial.actionMap ? { ...base.actionMap, ...partial.actionMap } : { ...base.actionMap },
     devices: { ...base.devices },
   };
 
@@ -97,6 +104,7 @@ export function resolveDeviceConfig(config: InputConfig, deviceId: string): Inpu
     deadZone: deviceOverride.deadZone ?? config.deadZone,
     dominant: deviceOverride.dominant ?? config.dominant,
     axisRemap: { ...config.axisRemap, ...deviceOverride.axisRemap },
+    actionMap: deviceOverride.actionMap ? { ...config.actionMap, ...deviceOverride.actionMap } : config.actionMap,
     lockPosition: deviceOverride.lockPosition ?? config.lockPosition,
     lockRotation: deviceOverride.lockRotation ?? config.lockRotation,
   };

@@ -13,3 +13,5 @@ export {
 export type { FlipConfig, SensitivityConfig, AxisMap } from "./transforms.js";
 export { saveSettings, loadSettings } from "./persistence.js";
 export type { StorageAdapter } from "./persistence.js";
+export { applyActionMap, actionValuesToSpatialData, swapActions, DEFAULT_ACTION_MAP } from "./action-map.js";
+export type { ActionMap, ActionBinding, ActionValues, InputAxis } from "./action-map.js";
