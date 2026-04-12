@@ -70,7 +70,7 @@ export class HIDPlugin extends DevicePlugin {
         let prevButtons = 0;
 
         this.hidDevice.on("data", (report: Buffer) => {
-          this.processReport(report, mapping, prevButtons, (buttons) => {
+          this.processReport(report, mapping, deviceId, prevButtons, (buttons) => {
             prevButtons = buttons;
           });
         });
@@ -105,6 +105,7 @@ export class HIDPlugin extends DevicePlugin {
   private processReport(
     report: Buffer,
     mapping: HIDDeviceMapping,
+    deviceId: string,
     prevButtons: number,
     setButtons: (b: number) => void,
   ): void {
@@ -127,6 +128,7 @@ export class HIDPlugin extends DevicePlugin {
       translation: { x: 0, y: 0, z: 0 },
       rotation: { x: 0, y: 0, z: 0 },
       timestamp,
+      deviceId,
     };
 
     let hasNonZero = false;

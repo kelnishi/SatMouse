@@ -33,6 +33,7 @@ export class SpaceFoxPlugin extends DevicePlugin {
           translation: { x: event.axes[0], y: event.axes[1], z: event.axes[2] },
           rotation: { x: event.axes[3], y: event.axes[4], z: event.axes[5] },
           timestamp: performance.now() * 1000,
+          deviceId: `cnx-${event.productId.toString(16)}`,
         });
       } else if (event.command === 2 && event.buttons !== this.prevButtons) {
         const timestamp = performance.now() * 1000;

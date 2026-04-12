@@ -15,6 +15,9 @@ import { resolveResource } from "./resources.js";
 import { ensureNSApp } from "./nsapp.js";
 import { ensureCerts } from "./certs.js";
 
+const isChildProcess = !!process.env.SATMOUSE_CHILD;
+const noDevice = !!process.env.SATMOUSE_NO_DEVICE;
+
 function getVersion(): string {
   try {
     const pkg = JSON.parse(readFileSync(resolveResource("package.json"), "utf-8"));
@@ -29,7 +32,7 @@ async function main(): Promise<void> {
   const version = getVersion();
 
   // Bootstrap NSApplication before anything else on macOS
-  ensureNSApp();
+  if (!noDevice) ensureNSApp();
 
   // Generate TLS certs if missing (for WebTransport)
   ensureCerts(config.certsDir);
@@ -47,9 +50,9 @@ async function main(): Promise<void> {
     process.exit(0);
   };
 
-  // Tray is handled by tray-wrapper in .app mode (SATMOUSE_SKIP_TRAY=1).
-  // In dev mode, create tray in-process.
-  if (!process.env.SATMOUSE_SKIP_TRAY) {
+  // Tray: child process skips (tray-wrapper handles it).
+  // Dev mode creates tray in-process.
+  if (!isChildProcess) {
     const tray = await createTray();
     tray?.start({
       onOpenClient: () => openBrowser(clientUrl),
@@ -57,31 +60,35 @@ async function main(): Promise<void> {
     });
   }
 
-  // 2. Set up device manager and register plugins
+  // Device manager
   const deviceManager = new DeviceManager();
-  deviceManager.registerPlugin(new SpaceMousePlugin());
-  deviceManager.registerPlugin(new SpaceFoxPlugin());
-  deviceManager.registerPlugin(new OrbionPlugin());
-  deviceManager.registerPlugin(new CadMousePlugin());
-  deviceManager.registerPlugin(new HIDPlugin());
 
-  // 3. Start device connections (after tray/NSApp is initialized)
-  await deviceManager.start(
-    config.enabledPlugins.length ? config.enabledPlugins : undefined
-  );
+  if (!noDevice) {
+    deviceManager.registerPlugin(new SpaceMousePlugin());
+    deviceManager.registerPlugin(new SpaceFoxPlugin());
+    deviceManager.registerPlugin(new OrbionPlugin());
+    deviceManager.registerPlugin(new CadMousePlugin());
+    deviceManager.registerPlugin(new HIDPlugin());
 
-  const devices = deviceManager.getConnectedDevices();
-  console.log(`\nDevices: ${devices.length ? devices.map((d) => d.name).join(", ") : "(none connected)"}`);
+    await deviceManager.start(
+      config.enabledPlugins.length ? config.enabledPlugins : undefined
+    );
 
-  // 4. Start HTTP server (serves td.json and reference client)
+    const devices = deviceManager.getConnectedDevices();
+    console.log(`\nDevices: ${devices.length ? devices.map((d) => d.name).join(", ") : "(none connected)"}`);
+  } else {
+    console.log("\nDevices: skipped (SATMOUSE_NO_DEVICE)");
+  }
+
+  // HTTP server
   const tdServer = new TDServer(config, deviceManager);
   const httpServer = tdServer.start();
 
-  // 5. Start transport servers (WebTransport + WebSocket + Legacy)
+  // Transport servers
   const transportManager = new TransportManager(config);
   await transportManager.start(deviceManager, httpServer);
 
-  // 6. Start mDNS advertisement
+  // mDNS
   const mdns = new MDNSAdvertiser(config);
   mdns.start();
 

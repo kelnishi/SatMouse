@@ -35,6 +35,7 @@ export class OrbionPlugin extends DevicePlugin {
           translation: { x: 0, y: 0, z: 0 },
           rotation: { x: 0, y: 0, z: event.axes[5] },
           timestamp: performance.now() * 1000,
+          deviceId: `cnx-${event.productId.toString(16)}`,
         });
       } else if (event.command === 2 && event.buttons !== this.prevButtons) {
         const timestamp = performance.now() * 1000;

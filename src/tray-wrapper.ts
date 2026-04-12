@@ -118,7 +118,7 @@ function main() {
   // Spawn the server process
   serverProcess = spawn(childNodeExe, [mainCjs], {
     stdio: ["ignore", "inherit", "inherit"],
-    env: { ...process.env, SATMOUSE_SKIP_TRAY: "1" },
+    env: { ...process.env, SATMOUSE_CHILD: "1" },
   });
 
   serverProcess.on("exit", (code) => {

@@ -262,6 +262,7 @@ function parseSatMouseUri(uri) {
 var DEFAULT_OPTIONS = {
   transports: ["webtransport", "websocket"],
   reconnectDelay: 2e3,
+  maxRetries: 3,
   wsSubprotocol: "satmouse-json"
 };
 var SatMouseConnection = class extends TypedEmitter {
@@ -270,6 +271,7 @@ var SatMouseConnection = class extends TypedEmitter {
   reconnectTimer = null;
   intentionalClose = false;
   deviceInfoUrl = null;
+  retryCount = 0;
   _state = "disconnected";
   _protocol = "none";
   get state() {
@@ -330,6 +332,12 @@ var SatMouseConnection = class extends TypedEmitter {
     this.setState("disconnected", "none");
     this.scheduleReconnect();
   }
+  /** Reset retry count and reconnect. Use after "failed" state. */
+  retry() {
+    this.retryCount = 0;
+    this.intentionalClose = false;
+    this.connect();
+  }
   disconnect() {
     this.intentionalClose = true;
     this.clearReconnect();
@@ -361,6 +369,7 @@ var SatMouseConnection = class extends TypedEmitter {
     try {
       await adapter.connect();
       this.transport = adapter;
+      this.retryCount = 0;
       this.setState("connected", adapter.protocol);
       return true;
     } catch (err) {
@@ -376,6 +385,13 @@ var SatMouseConnection = class extends TypedEmitter {
   }
   scheduleReconnect() {
     if (this.options.reconnectDelay <= 0 || this.intentionalClose) return;
+    this.retryCount++;
+    console.log(`[SatMouse] Reconnect attempt ${this.retryCount}/${this.options.maxRetries}`);
+    if (this.retryCount > this.options.maxRetries) {
+      console.log("[SatMouse] Max retries exceeded, giving up");
+      this.setState("failed", "none");
+      return;
+    }
     this.clearReconnect();
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
@@ -444,14 +460,17 @@ function actionValuesToSpatialData(values, timestamp) {
 // packages/client/src/utils/config.ts
 var DEFAULT_CONFIG = {
   sensitivity: { translation: 1e-3, rotation: 1e-3 },
-  flip: { tx: false, ty: true, tz: true, rx: false, ry: true, rz: true },
+  flip: { tx: false, ty: false, tz: false, rx: false, ry: false, rz: false },
   deadZone: 0,
   dominant: false,
   axisRemap: { tx: "x", ty: "y", tz: "z", rx: "x", ry: "y", rz: "z" },
   lockPosition: false,
   lockRotation: false,
   actionMap: { ...DEFAULT_ACTION_MAP },
-  devices: {}
+  devices: {
+    // SpaceMouse Z-up → Three.js Y-up axis correction
+    "cnx-*": { flip: { ty: true, tz: true, ry: true, rz: true } }
+  }
 };
 function mergeConfig(base, partial) {
   const merged = {
@@ -615,8 +634,8 @@ var InputManager = class extends TypedEmitter {
   connections = [];
   storage;
   knownDevices = /* @__PURE__ */ new Map();
-  // Accumulator: sums all device inputs per frame tick
-  accumulator = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 };
+  // Per-device accumulators: latest value from each device per frame tick
+  deviceAccumulators = /* @__PURE__ */ new Map();
   accDirty = false;
   flushTimer = null;
   _config;
@@ -714,13 +733,16 @@ var InputManager = class extends TypedEmitter {
   wireConnection(connection2) {
     connection2.on("spatialData", (raw) => {
       this.emit("rawSpatialData", raw);
-      const acc = this.accumulator;
-      acc.tx = Math.abs(raw.translation.x) > Math.abs(acc.tx) ? raw.translation.x : acc.tx;
-      acc.ty = Math.abs(raw.translation.y) > Math.abs(acc.ty) ? raw.translation.y : acc.ty;
-      acc.tz = Math.abs(raw.translation.z) > Math.abs(acc.tz) ? raw.translation.z : acc.tz;
-      acc.rx = Math.abs(raw.rotation.x) > Math.abs(acc.rx) ? raw.rotation.x : acc.rx;
-      acc.ry = Math.abs(raw.rotation.y) > Math.abs(acc.ry) ? raw.rotation.y : acc.ry;
-      acc.rz = Math.abs(raw.rotation.z) > Math.abs(acc.rz) ? raw.rotation.z : acc.rz;
+      const id = raw.deviceId ?? "_default";
+      const processed = this.processPerDevice(raw, id);
+      this.deviceAccumulators.set(id, {
+        tx: processed.translation.x,
+        ty: processed.translation.y,
+        tz: processed.translation.z,
+        rx: processed.rotation.x,
+        ry: processed.rotation.y,
+        rz: processed.rotation.z
+      });
       this.accDirty = true;
     });
     connection2.on("buttonEvent", (event) => this.emit("buttonEvent", event));
@@ -733,25 +755,40 @@ var InputManager = class extends TypedEmitter {
   }
   flushAccumulator() {
     if (!this.accDirty) return;
-    const raw = {
-      translation: { x: this.accumulator.tx, y: this.accumulator.ty, z: this.accumulator.tz },
-      rotation: { x: this.accumulator.rx, y: this.accumulator.ry, z: this.accumulator.rz },
+    const merged = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 };
+    for (const acc of this.deviceAccumulators.values()) {
+      merged.tx += acc.tx;
+      merged.ty += acc.ty;
+      merged.tz += acc.tz;
+      merged.rx += acc.rx;
+      merged.ry += acc.ry;
+      merged.rz += acc.rz;
+    }
+    this.deviceAccumulators.clear();
+    this.accDirty = false;
+    const data = {
+      translation: { x: merged.tx, y: merged.ty, z: merged.tz },
+      rotation: { x: merged.rx, y: merged.ry, z: merged.rz },
       timestamp: performance.now() * 1e3
     };
-    this.accumulator = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 };
-    this.accDirty = false;
-    const { spatial, actions } = this.processSpatialData(raw);
+    const { spatial, actions } = this.applyGlobalTransforms(data);
     if (spatial) this.emit("spatialData", spatial);
     if (actions) this.emit("actionValues", actions);
   }
-  processSpatialData(raw) {
-    const cfg = this._config;
+  /** Per-device transforms: flip, sensitivity, dead zone, dominant, axis remap */
+  processPerDevice(raw, deviceId) {
+    const cfg = resolveDeviceConfig(this._config, deviceId);
     let data = raw;
     if (cfg.deadZone > 0) data = applyDeadZone(data, cfg.deadZone);
     if (cfg.dominant) data = applyDominant(data);
     data = applyFlip(data, cfg.flip);
     data = applyAxisRemap(data, cfg.axisRemap);
     data = applySensitivity(data, cfg.sensitivity);
+    return data;
+  }
+  /** Global transforms applied after per-device merge: locks + action map */
+  applyGlobalTransforms(data) {
+    const cfg = this._config;
     if (cfg.lockPosition) {
       data = { ...data, translation: { x: 0, y: 0, z: 0 } };
     }
@@ -763,6 +800,293 @@ var InputManager = class extends TypedEmitter {
     return { spatial, actions };
   }
 };
+
+// packages/client/src/elements/registry.ts
+var globalManager = null;
+var listeners = /* @__PURE__ */ new Set();
+function registerSatMouse(manager2) {
+  globalManager = manager2;
+  for (const fn of listeners) fn(manager2);
+  listeners.clear();
+}
+function onManagerReady(fn) {
+  if (globalManager) fn(globalManager);
+  else listeners.add(fn);
+}
+
+// packages/client/src/elements/satmouse-status.ts
+var TEMPLATE = `
+<style>
+  :host { display: inline-flex; align-items: center; gap: 8px; font-family: inherit; font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #e74c3c; transition: background 0.3s; }
+  .dot[data-state="connected"] { background: #2ecc71; }
+  .dot[data-state="connecting"] { background: #f39c12; }
+  .dot[data-state="failed"] { background: #e74c3c; }
+  .protocol { color: #7f8c8d; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .launch { padding: 4px 12px; background: #2980b9; color: #fff; border-radius: 4px; font-size: 11px;
+            text-decoration: none; cursor: pointer; border: none; font-family: inherit; display: none; }
+  .launch:hover { background: #3498db; }
+</style>
+<span class="dot"></span>
+<span class="text">Disconnected</span>
+<span class="protocol"></span>
+<button class="launch">Launch SatMouse</button>
+`;
+var SatMouseStatus = class extends HTMLElement {
+  dot;
+  text;
+  proto;
+  launch;
+  disconnectTimer = null;
+  constructor() {
+    super();
+    const shadow = this.attachShadow({ mode: "open" });
+    shadow.innerHTML = TEMPLATE;
+    this.dot = shadow.querySelector(".dot");
+    this.text = shadow.querySelector(".text");
+    this.proto = shadow.querySelector(".protocol");
+    this.launch = shadow.querySelector(".launch");
+    this.launch.addEventListener("click", () => {
+      window.location.href = "satmouse://launch";
+      setTimeout(() => {
+        if (!document.hidden) {
+          if (confirm("SatMouse doesn't appear to be installed. Go to the download page?")) {
+            window.open("https://github.com/kelnishi/SatMouse/releases/latest", "_blank", "noopener");
+          }
+        }
+      }, 1e3);
+    });
+  }
+  connectedCallback() {
+    this.disconnectTimer = setTimeout(() => {
+      this.launch.style.display = "inline-block";
+    }, 3e3);
+    onManagerReady((manager2) => this.bind(manager2));
+  }
+  bind(manager2) {
+    manager2.on("stateChange", (state, protocol) => {
+      this.dot.dataset.state = state;
+      this.proto.textContent = protocol !== "none" ? protocol : "";
+      if (this.disconnectTimer) {
+        clearTimeout(this.disconnectTimer);
+        this.disconnectTimer = null;
+      }
+      if (state === "connected") {
+        this.text.textContent = "Connected";
+        this.launch.style.display = "none";
+      } else if (state === "connecting") {
+        this.text.textContent = "Connecting...";
+        this.launch.style.display = "none";
+      } else if (state === "failed") {
+        this.text.textContent = "Not running";
+        this.launch.style.display = "inline-block";
+      } else {
+        this.text.textContent = "Disconnected";
+        this.launch.style.display = "none";
+      }
+    });
+  }
+};
+customElements.define("satmouse-status", SatMouseStatus);
+
+// packages/client/src/elements/satmouse-devices.ts
+var AXES = ["tx", "ty", "tz", "rx", "ry", "rz"];
+var STYLES = `
+<style>
+  :host { display: block; font-family: inherit; font-size: 12px; }
+  .panel { background: #0f3460; border: 1px solid #1a4a8a; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+  summary { cursor: pointer; font-weight: 600; color: #e0e0e0; font-size: 13px; }
+  .type { font-size: 10px; color: #7f8c8d; text-transform: uppercase; margin-left: 6px; }
+  .controls { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .slider-row { display: flex; align-items: center; gap: 6px; }
+  .slider-row label { color: #7f8c8d; font-weight: 600; width: 38px; flex-shrink: 0; }
+  .slider-row input[type="range"] { flex: 1; min-width: 0; height: 4px; accent-color: #3498db; }
+  .slider-row span { color: #7f8c8d; font-family: monospace; font-size: 10px; min-width: 44px; text-align: right; }
+  .flip-group { display: flex; flex-direction: column; gap: 4px; }
+  .flip-row { display: flex; gap: 8px; }
+  .flip-row label { display: flex; align-items: center; gap: 2px; color: #7f8c8d; min-width: 36px; }
+  .flip-row input { accent-color: #e74c3c; }
+  .remap-group { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; }
+  .remap-row { display: flex; gap: 4px; align-items: center; }
+  .remap-row label { color: #7f8c8d; width: 24px; flex-shrink: 0; }
+  .remap-row select { background: #16213e; color: #e0e0e0; border: 1px solid #1a4a8a; border-radius: 3px;
+                       font-size: 11px; padding: 1px 4px; flex: 1; min-width: 0; }
+  .empty { color: #7f8c8d; font-style: italic; }
+</style>
+`;
+function mapSlider(v) {
+  return 1e-4 * Math.pow(500, v / 100);
+}
+function unmapSlider(v) {
+  return 100 * Math.log(v / 1e-4) / Math.log(500);
+}
+var SatMouseDevices = class extends HTMLElement {
+  manager = null;
+  container;
+  constructor() {
+    super();
+    const shadow = this.attachShadow({ mode: "open" });
+    shadow.innerHTML = STYLES + `<div class="container"><span class="empty">No devices</span></div>`;
+    this.container = shadow.querySelector(".container");
+  }
+  connectedCallback() {
+    onManagerReady((manager2) => {
+      this.manager = manager2;
+      manager2.on("deviceStatus", (event, device) => {
+        if (event === "connected") this.addDevice(device);
+        else this.removeDevice(device);
+      });
+      manager2.on("stateChange", (state) => {
+        if (state === "connected") {
+          manager2.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d)));
+        }
+      });
+    });
+  }
+  addDevice(device) {
+    if (this.shadowRoot.getElementById(`dev-${device.id}`)) return;
+    const empty = this.container.querySelector(".empty");
+    if (empty) empty.remove();
+    const mgr = this.manager;
+    const cfg = mgr.getDeviceConfig(device.id);
+    const panel = document.createElement("details");
+    panel.className = "panel";
+    panel.id = `dev-${device.id}`;
+    panel.open = true;
+    const summary = document.createElement("summary");
+    summary.innerHTML = `${device.model ?? device.name}<span class="type">${device.connectionType ?? ""}</span>`;
+    panel.appendChild(summary);
+    const controls = document.createElement("div");
+    controls.className = "controls";
+    for (const type of ["translation", "rotation"]) {
+      const row = document.createElement("div");
+      row.className = "slider-row";
+      const val = cfg.sensitivity?.[type] ?? mgr.config.sensitivity[type];
+      row.innerHTML = `<label>${type === "translation" ? "Trans" : "Rot"}</label><input type="range" min="0" max="100" value="${Math.round(unmapSlider(val))}"><span>${val.toFixed(4)}</span>`;
+      const slider = row.querySelector("input");
+      const span = row.querySelector("span");
+      slider.addEventListener("input", () => {
+        const v = mapSlider(+slider.value);
+        span.textContent = v.toFixed(4);
+        mgr.updateDeviceConfig(device.id, {
+          sensitivity: { ...mgr.getDeviceConfig(device.id).sensitivity, [type]: v }
+        });
+      });
+      controls.appendChild(row);
+    }
+    const flipGroup = document.createElement("div");
+    flipGroup.className = "flip-group";
+    for (const group of [["tx", "ty", "tz"], ["rx", "ry", "rz"]]) {
+      const row = document.createElement("div");
+      row.className = "flip-row";
+      for (const axis of group) {
+        const label = document.createElement("label");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = cfg.flip?.[axis] ?? mgr.config.flip[axis];
+        cb.addEventListener("change", () => {
+          mgr.updateDeviceConfig(device.id, {
+            flip: { ...mgr.getDeviceConfig(device.id).flip, [axis]: cb.checked }
+          });
+        });
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(axis.toUpperCase()));
+        row.appendChild(label);
+      }
+      flipGroup.appendChild(row);
+    }
+    controls.appendChild(flipGroup);
+    const remapGroup = document.createElement("div");
+    remapGroup.className = "remap-group";
+    const actionMap = cfg.actionMap ?? mgr.config.actionMap;
+    for (const action of AXES) {
+      const row = document.createElement("div");
+      row.className = "remap-row";
+      row.innerHTML = `<label>${action.toUpperCase()}</label>`;
+      const sel = document.createElement("select");
+      for (const src of AXES) {
+        const opt = document.createElement("option");
+        opt.value = src;
+        opt.textContent = src.toUpperCase();
+        if (actionMap[action]?.source === src) opt.selected = true;
+        sel.appendChild(opt);
+      }
+      sel.addEventListener("change", () => {
+        const current = mgr.getDeviceConfig(device.id).actionMap ?? { ...DEFAULT_ACTION_MAP };
+        current[action] = { ...current[action], source: sel.value };
+        mgr.updateDeviceConfig(device.id, { actionMap: current });
+      });
+      row.appendChild(sel);
+      remapGroup.appendChild(row);
+    }
+    controls.appendChild(remapGroup);
+    panel.appendChild(controls);
+    this.container.appendChild(panel);
+  }
+  removeDevice(device) {
+    this.shadowRoot.getElementById(`dev-${device.id}`)?.remove();
+    if (this.container.children.length === 0) {
+      this.container.innerHTML = `<span class="empty">No devices</span>`;
+    }
+  }
+};
+customElements.define("satmouse-devices", SatMouseDevices);
+
+// packages/client/src/elements/satmouse-debug.ts
+var TEMPLATE2 = `
+<style>
+  :host { display: block; font-family: monospace; font-size: 12px; }
+  .row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .label { color: #7f8c8d; font-weight: 600; width: 28px; }
+  .value { color: #3498db; text-align: right; min-width: 50px; }
+  .meta { color: #7f8c8d; font-size: 11px; padding: 2px 0; }
+</style>
+<div class="meta"><span class="state">Disconnected</span> \xB7 <span class="protocol"></span> \xB7 <span class="fps">0</span> fps</div>
+<div class="row"><span class="label">TX</span><span class="value" id="tx">0</span></div>
+<div class="row"><span class="label">TY</span><span class="value" id="ty">0</span></div>
+<div class="row"><span class="label">TZ</span><span class="value" id="tz">0</span></div>
+<div class="row"><span class="label">RX</span><span class="value" id="rx">0</span></div>
+<div class="row"><span class="label">RY</span><span class="value" id="ry">0</span></div>
+<div class="row"><span class="label">RZ</span><span class="value" id="rz">0</span></div>
+`;
+var SatMouseDebug = class extends HTMLElement {
+  els = {};
+  frameCount = 0;
+  constructor() {
+    super();
+    const shadow = this.attachShadow({ mode: "open" });
+    shadow.innerHTML = TEMPLATE2;
+    for (const id of ["tx", "ty", "tz", "rx", "ry", "rz"]) {
+      this.els[id] = shadow.getElementById(id);
+    }
+    this.els.state = shadow.querySelector(".state");
+    this.els.protocol = shadow.querySelector(".protocol");
+    this.els.fps = shadow.querySelector(".fps");
+  }
+  connectedCallback() {
+    onManagerReady((manager2) => this.bind(manager2));
+  }
+  bind(manager2) {
+    manager2.on("rawSpatialData", (data) => {
+      this.frameCount++;
+      this.els.tx.textContent = String(Math.round(data.translation.x));
+      this.els.ty.textContent = String(Math.round(data.translation.y));
+      this.els.tz.textContent = String(Math.round(data.translation.z));
+      this.els.rx.textContent = String(Math.round(data.rotation.x));
+      this.els.ry.textContent = String(Math.round(data.rotation.y));
+      this.els.rz.textContent = String(Math.round(data.rotation.z));
+    });
+    manager2.on("stateChange", (state, protocol) => {
+      this.els.state.textContent = state;
+      this.els.protocol.textContent = protocol !== "none" ? protocol : "";
+    });
+    setInterval(() => {
+      this.els.fps.textContent = String(this.frameCount);
+      this.frameCount = 0;
+    }, 1e3);
+  }
+};
+customElements.define("satmouse-debug", SatMouseDebug);
 
 // client/src/cube.ts
 import * as THREE from "three";
@@ -842,42 +1166,17 @@ function reset() {
 }
 
 // client/src/main.ts
-var canvas = document.getElementById("canvas");
-var statusDot = document.getElementById("status-dot");
-var statusText = document.getElementById("status-text");
-var protocolLabel = document.getElementById("protocol-label");
-var buttonLog = document.getElementById("button-log");
-var valTx = document.getElementById("val-tx");
-var valTy = document.getElementById("val-ty");
-var valTz = document.getElementById("val-tz");
-var valRx = document.getElementById("val-rx");
-var valRy = document.getElementById("val-ry");
-var valRz = document.getElementById("val-rz");
-var btnReset = document.getElementById("btn-reset");
-var btnLockPos = document.getElementById("btn-lock-pos");
-var btnLockRot = document.getElementById("btn-lock-rot");
-var btnLockOrbit = document.getElementById("btn-lock-orbit");
-var btnDominant = document.getElementById("btn-dominant");
-var sliderTrans = document.getElementById("slider-trans");
-var sliderTransVal = document.getElementById("slider-trans-val");
-var sliderRot = document.getElementById("slider-rot");
-var sliderRotVal = document.getElementById("slider-rot-val");
 var connection = new SatMouseConnection();
 var manager = new InputManager();
 manager.addConnection(connection);
-var lockOrbit = false;
+registerSatMouse(manager);
+var canvas = document.getElementById("canvas");
 init(canvas);
+var lockOrbit = false;
 manager.onSpatialData((data) => {
   applyFrame(data, lockOrbit);
 });
-manager.on("rawSpatialData", (data) => {
-  valTx.textContent = String(Math.round(data.translation.x));
-  valTy.textContent = String(Math.round(data.translation.y));
-  valTz.textContent = String(Math.round(data.translation.z));
-  valRx.textContent = String(Math.round(data.rotation.x));
-  valRy.textContent = String(Math.round(data.rotation.y));
-  valRz.textContent = String(Math.round(data.rotation.z));
-});
+var buttonLog = document.getElementById("button-log");
 manager.onButtonEvent((data) => {
   const entry = document.createElement("div");
   entry.className = `log-entry ${data.pressed ? "pressed" : "released"}`;
@@ -887,11 +1186,11 @@ manager.onButtonEvent((data) => {
     buttonLog.removeChild(buttonLog.lastChild);
   }
 });
-manager.on("stateChange", (state, protocol) => {
-  statusDot.className = state;
-  statusText.textContent = state === "connected" ? "Connected" : state === "connecting" ? "Connecting..." : "Disconnected";
-  protocolLabel.textContent = protocol !== "none" ? protocol : "";
-});
+var btnReset = document.getElementById("btn-reset");
+var btnLockPos = document.getElementById("btn-lock-pos");
+var btnLockRot = document.getElementById("btn-lock-rot");
+var btnLockOrbit = document.getElementById("btn-lock-orbit");
+var btnDominant = document.getElementById("btn-dominant");
 btnReset.addEventListener("click", reset);
 function toggleButton(btn, key) {
   btn.addEventListener("click", () => {
@@ -905,32 +1204,5 @@ toggleButton(btnDominant, "dominant");
 btnLockOrbit.addEventListener("click", () => {
   btnLockOrbit.classList.toggle("active");
   lockOrbit = btnLockOrbit.classList.contains("active");
-});
-document.querySelectorAll(".flip-cb").forEach((cb) => {
-  const axis = cb.dataset.axis;
-  cb.checked = manager.config.flip[axis];
-  cb.addEventListener("change", () => {
-    manager.updateConfig({ flip: { ...manager.config.flip, [axis]: cb.checked } });
-  });
-});
-function mapSlider(v) {
-  return 1e-4 * Math.pow(500, v / 100);
-}
-function unmapSlider(v) {
-  return 100 * Math.log(v / 1e-4) / Math.log(500);
-}
-sliderTrans.value = String(Math.round(unmapSlider(manager.config.sensitivity.translation)));
-sliderTransVal.textContent = manager.config.sensitivity.translation.toFixed(4);
-sliderRot.value = String(Math.round(unmapSlider(manager.config.sensitivity.rotation)));
-sliderRotVal.textContent = manager.config.sensitivity.rotation.toFixed(4);
-sliderTrans.addEventListener("input", () => {
-  const v = mapSlider(+sliderTrans.value);
-  manager.updateConfig({ sensitivity: { ...manager.config.sensitivity, translation: v } });
-  sliderTransVal.textContent = v.toFixed(4);
-});
-sliderRot.addEventListener("input", () => {
-  const v = mapSlider(+sliderRot.value);
-  manager.updateConfig({ sensitivity: { ...manager.config.sensitivity, rotation: v } });
-  sliderRotVal.textContent = v.toFixed(4);
 });
 connection.connect();

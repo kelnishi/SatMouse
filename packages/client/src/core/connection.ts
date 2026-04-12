@@ -37,10 +37,11 @@ export function parseSatMouseUri(uri: string): { tdUrl: string; wsUrl: string; w
 }
 
 const DEFAULT_OPTIONS: Required<
-  Pick<ConnectOptions, "transports" | "reconnectDelay" | "wsSubprotocol">
+  Pick<ConnectOptions, "transports" | "reconnectDelay" | "maxRetries" | "wsSubprotocol">
 > = {
   transports: ["webtransport", "websocket"],
   reconnectDelay: 2000,
+  maxRetries: 3,
   wsSubprotocol: "satmouse-json",
 };
 
@@ -56,6 +57,7 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalClose = false;
   private deviceInfoUrl: string | null = null;
+  private retryCount = 0;
 
   private _state: ConnectionState = "disconnected";
   private _protocol: TransportProtocol = "none";
@@ -132,6 +134,13 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
     this.scheduleReconnect();
   }
 
+  /** Reset retry count and reconnect. Use after "failed" state. */
+  retry(): void {
+    this.retryCount = 0;
+    this.intentionalClose = false;
+    this.connect();
+  }
+
   disconnect(): void {
     this.intentionalClose = true;
     this.clearReconnect();
@@ -168,6 +177,7 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
     try {
       await adapter.connect();
       this.transport = adapter;
+      this.retryCount = 0;
       this.setState("connected", adapter.protocol);
       return true;
     } catch (err) {
@@ -185,6 +195,15 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
 
   private scheduleReconnect(): void {
     if (this.options.reconnectDelay <= 0 || this.intentionalClose) return;
+
+    this.retryCount++;
+    console.log(`[SatMouse] Reconnect attempt ${this.retryCount}/${this.options.maxRetries}`);
+    if (this.retryCount > this.options.maxRetries) {
+      console.log("[SatMouse] Max retries exceeded, giving up");
+      this.setState("failed", "none");
+      return;
+    }
+
     this.clearReconnect();
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
