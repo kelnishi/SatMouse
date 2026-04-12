@@ -24,5 +24,7 @@ export function ensureNSApp(): void {
   const NSApp = msg(objc_getClass("NSApplication"), sel("sharedApplication"));
   // Accessory = 1: no dock icon, but can show menu bar items
   msg_l(NSApp, sel("setActivationPolicy:"), 1);
+  // finishLaunching registers with the window server (required for menu bar + IPC)
+  msg(NSApp, sel("finishLaunching"));
   msg_l(NSApp, sel("activateIgnoringOtherApps:"), 1);
 }
