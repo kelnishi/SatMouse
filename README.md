@@ -202,15 +202,82 @@ If your app integrates SatMouse, submit a PR adding a row to the table above. In
 
 ### Client SDK
 
-**`@kelnishi/satmouse-client`** — three tree-shakeable modules:
+**`@kelnishi/satmouse-client`** — four tree-shakeable modules:
 
 | Module | Import | Purpose |
 |---|---|---|
-| **core** | `@kelnishi/satmouse-client` | Connection, discovery, binary decode. Zero dependencies. |
-| **utils** | `@kelnishi/satmouse-client/utils` | InputManager, transforms (flip, sensitivity, dominant, dead zone, axis remap), settings persistence |
-| **react** | `@kelnishi/satmouse-client/react` | `<SatMouseProvider>`, `useSpatialData()`, `<SettingsPanel>`, `<DeviceInfo>`, `<DebugPanel>` |
+| **core** | `@kelnishi/satmouse-client` | `SatMouseConnection`, discovery (`fetchThingDescription`, `resolveEndpoints`), binary decode, `launchSatMouse()`. Zero dependencies. |
+| **utils** | `@kelnishi/satmouse-client/utils` | `InputManager` — unified device service with transform pipeline (flip, sensitivity, dominant, dead zone, axis remap, action map), per-device config, multi-device merge, settings persistence. |
+| **react** | `@kelnishi/satmouse-client/react` | `<SatMouseProvider>`, `useSpatialData()`, `useRawSpatialData()`, `useButtonEvent()`, `<ConnectionStatus>`, `<SettingsPanel>`, `<DeviceInfo>`, `<DebugPanel>` |
+| **elements** | `@kelnishi/satmouse-client/elements` | Web Components: `<satmouse-status>`, `<satmouse-devices>`, `<satmouse-debug>`. Shadow DOM, works in any framework. |
 
-Any app that speaks WebSocket or WebTransport can connect to SatMouse — the client SDK is optional but provides typed APIs, auto-discovery, and React integration out of the box.
+#### Core
+
+```typescript
+import { SatMouseConnection } from "@kelnishi/satmouse-client";
+
+const connection = new SatMouseConnection({
+  // All optional — defaults to localhost:18945
+  tdUrl: "http://localhost:18945/td.json",
+  transports: ["webtransport", "websocket"],
+  maxRetries: 3,
+});
+
+connection.on("spatialData", (data) => { /* SpatialData */ });
+connection.on("buttonEvent", (data) => { /* ButtonEvent */ });
+connection.on("stateChange", (state, protocol) => { /* "connected" | "disconnected" | ... */ });
+connection.on("deviceStatus", (event, device) => { /* "connected" | "disconnected" */ });
+
+await connection.connect();
+```
+
+#### InputManager
+
+```typescript
+import { InputManager } from "@kelnishi/satmouse-client/utils";
+
+const manager = new InputManager({
+  sensitivity: { translation: 1.0, rotation: 1.0 },
+  flip: { tx: false, ty: true, tz: true, rx: false, ry: true, rz: true },
+  deadZone: 0.02,
+  dominant: false,
+  lockPosition: false,
+  lockRotation: false,
+  devices: {
+    "cnx-*": { flip: { ty: true, tz: true, ry: true, rz: true } },
+  },
+});
+
+manager.addConnection(connection);
+manager.onSpatialData((data) => { /* processed, merged, transformed */ });
+manager.onButtonEvent((event) => { /* button press/release */ });
+manager.onActionValues((values) => { /* named action values from actionMap */ });
+
+// Per-device config at runtime
+manager.updateDeviceConfig("cnx-c635", { sensitivity: { translation: 0.5 } });
+```
+
+#### Web Components
+
+```html
+<script type="module">
+  import { SatMouseConnection } from "@kelnishi/satmouse-client";
+  import { InputManager } from "@kelnishi/satmouse-client/utils";
+  import { registerSatMouse } from "@kelnishi/satmouse-client/elements";
+
+  const connection = new SatMouseConnection();
+  const manager = new InputManager();
+  manager.addConnection(connection);
+  registerSatMouse(manager);
+  await connection.connect();
+</script>
+
+<satmouse-status></satmouse-status>
+<satmouse-devices></satmouse-devices>
+<satmouse-debug></satmouse-debug>
+```
+
+Any app that speaks WebSocket or WebTransport can connect to SatMouse directly — the client SDK is optional but provides typed APIs, auto-discovery, transforms, and framework integration out of the box.
 
 ## Development
 
