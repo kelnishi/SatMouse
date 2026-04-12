@@ -21,16 +21,17 @@ mkdir -p "$APP/Contents/Resources/bin"
 cp "$NODE_BIN" "$APP/Contents/Resources/bin/node"
 chmod +x "$APP/Contents/Resources/bin/node"
 
-# Copy the bundled JS as .cjs (CJS must not go through ESM loader)
+# Copy bundled JS files
 cp dist/main.js "$APP/Contents/Resources/main.cjs"
+cp dist/tray-wrapper.cjs "$APP/Contents/Resources/tray-wrapper.cjs"
 
-# Launcher: exec node directly with the .cjs file (no stdin pipe —
-# stdin pipe prevents 3DxWare from delivering axis events)
+# Launcher: tray wrapper is the main process (owns the menu bar icon).
+# It spawns node main.cjs as a child for the server/device work.
 cat > "$APP/Contents/MacOS/satmouse" << 'LAUNCHER'
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 RESOURCES="$DIR/../Resources"
-exec "$RESOURCES/bin/node" "$RESOURCES/main.cjs"
+exec "$RESOURCES/bin/node" "$RESOURCES/tray-wrapper.cjs"
 LAUNCHER
 chmod +x "$APP/Contents/MacOS/satmouse"
 
