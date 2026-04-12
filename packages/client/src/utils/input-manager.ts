@@ -51,6 +51,11 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
   private storage?: StorageAdapter;
   private knownDevices = new Map<string, DeviceInfo>();
 
+  // Accumulator: sums all device inputs per frame tick
+  private accumulator = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 };
+  private accDirty = false;
+  private flushTimer: ReturnType<typeof setInterval> | null = null;
+
   private _config: InputConfig;
 
   get config(): InputConfig {
@@ -62,6 +67,9 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
     this.storage = storage;
     const persisted = loadSettings(storage);
     this._config = mergeConfig(DEFAULT_CONFIG, { ...config, ...persisted });
+
+    // Flush accumulated inputs at ~60Hz
+    this.flushTimer = setInterval(() => this.flushAccumulator(), 16);
   }
 
   /** Add a connection to the managed set */
@@ -85,6 +93,7 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
   /** Disconnect all managed connections */
   disconnect(): void {
     for (const c of this.connections) c.disconnect();
+    if (this.flushTimer) { clearInterval(this.flushTimer); this.flushTimer = null; }
   }
 
   /** Fetch device info from all connections */
@@ -157,9 +166,16 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
   private wireConnection(connection: SatMouseConnection): void {
     connection.on("spatialData", (raw) => {
       this.emit("rawSpatialData", raw);
-      const { spatial, actions } = this.processSpatialData(raw);
-      if (spatial) this.emit("spatialData", spatial);
-      if (actions) this.emit("actionValues", actions);
+      // Accumulate: take max absolute value per axis across all events in this frame.
+      // This merges inputs from multiple devices without amplifying single-device data.
+      const acc = this.accumulator;
+      acc.tx = Math.abs(raw.translation.x) > Math.abs(acc.tx) ? raw.translation.x : acc.tx;
+      acc.ty = Math.abs(raw.translation.y) > Math.abs(acc.ty) ? raw.translation.y : acc.ty;
+      acc.tz = Math.abs(raw.translation.z) > Math.abs(acc.tz) ? raw.translation.z : acc.tz;
+      acc.rx = Math.abs(raw.rotation.x) > Math.abs(acc.rx) ? raw.rotation.x : acc.rx;
+      acc.ry = Math.abs(raw.rotation.y) > Math.abs(acc.ry) ? raw.rotation.y : acc.ry;
+      acc.rz = Math.abs(raw.rotation.z) > Math.abs(acc.rz) ? raw.rotation.z : acc.rz;
+      this.accDirty = true;
     });
 
     connection.on("buttonEvent", (event) => this.emit("buttonEvent", event));
@@ -169,6 +185,24 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
       else this.knownDevices.delete(device.id);
       this.emit("deviceStatus", event, device);
     });
+  }
+
+  private flushAccumulator(): void {
+    if (!this.accDirty) return;
+
+    const raw: SpatialData = {
+      translation: { x: this.accumulator.tx, y: this.accumulator.ty, z: this.accumulator.tz },
+      rotation: { x: this.accumulator.rx, y: this.accumulator.ry, z: this.accumulator.rz },
+      timestamp: performance.now() * 1000,
+    };
+
+    // Reset accumulator
+    this.accumulator = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 };
+    this.accDirty = false;
+
+    const { spatial, actions } = this.processSpatialData(raw);
+    if (spatial) this.emit("spatialData", spatial);
+    if (actions) this.emit("actionValues", actions);
   }
 
   private processSpatialData(raw: SpatialData): { spatial: SpatialData | null; actions: ActionValues | null } {
