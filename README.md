@@ -179,11 +179,18 @@ deviceManager.registerPlugin(hid);
 
 ## Compatible Clients
 
-| Client | Type | Status |
-|---|---|---|
-| [Kelcite](https://kelcite.app) | 3D modeling web app | Integrated |
-| [Reference Client](http://localhost:4444/client/) | Three.js demo (built into SatMouse) | Included |
-| Any app using `@kelnishi/satmouse-client` | Custom | Build your own |
+<!-- ADD YOUR APP HERE — submit a PR adding a row to this table -->
+| Client | Type | Integration | Status |
+|---|---|---|---|
+| [Kelcite](https://kelcite.app) | 3D modeling web app | `@kelnishi/satmouse-client/react` | Integrated |
+| [Reference Client](http://localhost:4444/client/) | Three.js demo | Built into SatMouse | Included |
+
+### Listing your app
+
+If your app integrates SatMouse, submit a PR adding a row to the table above. Include:
+- Link to your app
+- Brief description
+- Which SDK module you use (or "custom" if using the WebSocket/WebTransport protocol directly)
 
 ### Client SDK
 
