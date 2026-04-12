@@ -62,7 +62,7 @@ export class TDServer {
     this.setCORS(req, res);
 
     if (url === "/td.json") {
-      this.serveTD(res);
+      this.serveTD(req, res);
     } else if (url === "/api/device") {
       this.serveDeviceInfo(res);
     } else if (url.startsWith("/client")) {
@@ -73,8 +73,10 @@ export class TDServer {
     }
   }
 
-  private serveTD(res: ServerResponse): void {
-    const host = getLocalIP();
+  private serveTD(req: IncomingMessage, res: ServerResponse): void {
+    // Use the hostname from the request so URLs match how the client reached us
+    const reqHost = (req.headers.host ?? "localhost").split(":")[0];
+    const host = reqHost;
     const baseWt = `https://${host}:${this.config.wtPort}`;
     const baseWs = `ws://${host}:${this.config.wsPort}`;
     const baseHttp = `http://${host}:${this.config.wsPort}`;
