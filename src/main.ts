@@ -9,7 +9,7 @@ import { TransportManager } from "./transport/index.js";
 import { MDNSAdvertiser } from "./discovery/mdns.js";
 import { TDServer } from "./discovery/td-server.js";
 import { createTray } from "./tray/index.js";
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -78,15 +78,21 @@ async function main(): Promise<void> {
 }
 
 function openBrowser(url: string): void {
+  // Validate URL to prevent injection — only allow http/https
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+  } catch { return; }
+
   switch (process.platform) {
     case "darwin":
-      exec(`open "${url}"`);
+      execFile("open", [url]);
       break;
     case "win32":
-      exec(`start "" "${url}"`);
+      execFile("cmd", ["/c", "start", "", url]);
       break;
     default:
-      exec(`xdg-open "${url}"`);
+      execFile("xdg-open", [url]);
       break;
   }
 }

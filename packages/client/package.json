@@ -53,6 +53,7 @@
     "typescript": "^5.7.0"
   },
   "license": "MIT",
+  "homepage": "https://kelnishi.github.io/SatMouse/",
   "repository": {
     "type": "git",
     "url": "https://github.com/kelnishi/SatMouse.git",

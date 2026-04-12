@@ -20,8 +20,18 @@ export interface LaunchOptions {
  */
 export function launchSatMouse(options?: LaunchOptions): Promise<boolean> {
   const schemeUrl = options?.schemeUrl ?? SCHEME_URL;
-  const fallbackUrl = options?.fallbackUrl ?? PROJECT_URL;
   const timeout = options?.timeout ?? 2500;
+
+  // Validate fallback URL — only allow http/https to prevent javascript: or data: injection
+  let fallbackUrl = PROJECT_URL;
+  if (options?.fallbackUrl) {
+    try {
+      const parsed = new URL(options.fallbackUrl);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        fallbackUrl = options.fallbackUrl;
+      }
+    } catch {}
+  }
 
   return new Promise((resolve) => {
     // Track if we leave the page (scheme handler opened the app)

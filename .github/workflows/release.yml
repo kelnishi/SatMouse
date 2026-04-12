@@ -97,7 +97,13 @@ jobs:
             SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)"/\1/')
             echo "Signing with: $SIGNING_IDENTITY"
 
-            # Sign with hardened runtime + entitlements
+            # Sign all native addons (.node, .dylib) individually first
+            find dist/SatMouse.app -name "*.node" -o -name "*.dylib" | while read f; do
+              echo "Signing native addon: $f"
+              codesign --sign "$SIGNING_IDENTITY" --options runtime --timestamp --force "$f"
+            done
+
+            # Sign the .app bundle
             codesign --sign "$SIGNING_IDENTITY" \
               --options runtime \
               --entitlements scripts/entitlements.plist \

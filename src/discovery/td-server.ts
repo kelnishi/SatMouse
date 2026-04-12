@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import type { SatMouseConfig } from "../config.js";
 import type { DeviceManager } from "../devices/manager.js";
-import { resolveResource } from "../resources.js";
+import { resolveResource, isPathWithin } from "../resources.js";
 
 /**
  * HTTP server that serves:
@@ -38,8 +38,8 @@ export class TDServer {
 
   start(): Server {
     this.server = createServer((req, res) => this.handleRequest(req, res));
-    this.server.listen(this.config.wsPort, "0.0.0.0", () => {
-      console.log(`[HTTP] Serving td.json and client at http://0.0.0.0:${this.config.wsPort}`);
+    this.server.listen(this.config.wsPort, this.config.host, () => {
+      console.log(`[HTTP] Serving td.json and client at http://${this.config.host}:${this.config.wsPort}`);
     });
     return this.server;
   }
@@ -49,8 +49,17 @@ export class TDServer {
     console.log("[HTTP] Stopped");
   }
 
+  private setCORS(req: IncomingMessage, res: ServerResponse): void {
+    const origin = req.headers.origin ?? "";
+    // Allow localhost origins on any port, reject others
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+  }
+
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
     const url = req.url ?? "/";
+    this.setCORS(req, res);
 
     if (url === "/td.json") {
       this.serveTD(res);
@@ -102,7 +111,6 @@ export class TDServer {
 
       res.writeHead(200, {
         "Content-Type": "application/td+json",
-        "Access-Control-Allow-Origin": "*",
       });
       res.end(JSON.stringify(td, null, 2));
     } catch (err) {
@@ -125,9 +133,9 @@ export class TDServer {
     let relPath = url === "/client" || url === "/client/" ? "client/index.html" : url.slice(1);
     const filePath = resolveResource(relPath);
 
-    // Basic security: ensure we're still inside the client directory
+    // Prevent path traversal — verify resolved path is within client directory
     const clientDir = resolveResource("client");
-    if (!filePath.startsWith(clientDir)) {
+    if (!isPathWithin(filePath, clientDir)) {
       res.writeHead(403, { "Content-Type": "text/plain" });
       res.end("Forbidden");
       return;
@@ -144,7 +152,6 @@ export class TDServer {
       };
       res.writeHead(200, {
         "Content-Type": mimeTypes[ext ?? ""] ?? "application/octet-stream",
-        "Access-Control-Allow-Origin": "*",
       });
       res.end(content);
     } catch {

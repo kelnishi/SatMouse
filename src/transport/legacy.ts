@@ -84,10 +84,12 @@ export class LegacyServer {
 
   /** Called by the transport manager when button state changes */
   handleButtonEvent(data: ButtonEvent): void {
+    if (typeof data.button !== "number" || data.button < 0 || data.button > 31) return;
+    const bit = data.button | 0;
     if (data.pressed) {
-      this.buttons |= (1 << data.button);
+      this.buttons |= (1 << bit);
     } else {
-      this.buttons &= ~(1 << data.button);
+      this.buttons &= ~(1 << bit);
     }
   }
 
