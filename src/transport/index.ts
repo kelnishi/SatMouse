@@ -1,5 +1,6 @@
 import { WebTransportServer } from "./webtransport.js";
 import { SatMouseWebSocketServer } from "./websocket.js";
+import { LegacyServer } from "./legacy.js";
 import type { DeviceManager } from "../devices/manager.js";
 import type { SatMouseConfig } from "../config.js";
 import { join } from "node:path";
@@ -11,8 +12,10 @@ import { join } from "node:path";
 export class TransportManager {
   private wt: WebTransportServer;
   private ws: SatMouseWebSocketServer;
+  private legacy: LegacyServer;
 
   constructor(config: SatMouseConfig) {
+    this.legacy = new LegacyServer();
     this.wt = new WebTransportServer(
       config.wtPort,
       join(config.certsDir, "cert.pem"),
@@ -22,15 +25,17 @@ export class TransportManager {
   }
 
   async start(deviceManager: DeviceManager, httpServer?: any): Promise<void> {
-    // Wire device events to both transports
+    // Wire device events to all transports (including legacy)
     deviceManager.on("spatialData", (data) => {
       this.wt.broadcastSpatialData(data);
       this.ws.broadcastSpatialData(data);
+      this.legacy.handleSpatialData(data);
     });
 
     deviceManager.on("buttonEvent", (data) => {
       this.wt.broadcastButtonEvent(data);
       this.ws.broadcastButtonEvent(data);
+      this.legacy.handleButtonEvent(data);
     });
 
     deviceManager.on("deviceConnected", (info) => {
@@ -44,6 +49,9 @@ export class TransportManager {
     // Start WebSocket first (no TLS requirement)
     this.ws.start(httpServer);
 
+    // Start legacy server on port 18944
+    this.legacy.start();
+
     // Start WebTransport (requires TLS certs)
     try {
       await this.wt.start();
@@ -56,5 +64,6 @@ export class TransportManager {
   stop(): void {
     this.wt.stop();
     this.ws.stop();
+    this.legacy.stop();
   }
 }

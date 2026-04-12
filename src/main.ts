@@ -52,6 +52,7 @@ async function main(): Promise<void> {
   console.log(`Reference client:  ${clientUrl}`);
   console.log(`WebSocket:         ws://localhost:${config.wsPort}/spatial`);
   console.log(`WebTransport:      https://localhost:${config.wtPort}`);
+  console.log(`Legacy (compat):   ws://127.0.0.1:18944`);
   console.log("──────────────────────────────────────────\n");
 
   // 6. Start system tray
