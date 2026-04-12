@@ -27,7 +27,7 @@ export class WindowsConnexionDriver extends ConnexionDriver {
   }
 
   async connect(): Promise<void> {
-    const koffi: any = await import("koffi" as any).then(m => m.default ?? m);
+    const koffi: any = require("koffi");
 
     const sdkPath = SDK_PATHS.find((p) => existsSync(p));
     if (!sdkPath) throw new Error("3DxWare SDK not found");
