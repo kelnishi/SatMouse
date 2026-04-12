@@ -13,6 +13,7 @@ const TEMPLATE = `
   .launch { padding: 4px 12px; background: #2980b9; color: #fff; border-radius: 4px; font-size: 11px;
             text-decoration: none; cursor: pointer; border: none; font-family: inherit; display: none; }
   .launch:hover { background: #3498db; }
+
 </style>
 <span class="dot"></span>
 <span class="text">Disconnected</span>
@@ -77,6 +78,7 @@ export class SatMouseStatus extends HTMLElement {
 
     if (state === "connected") {
       this.stopPoll();
+      this.showDownload = false;
       this.text.textContent = "Connected";
       this.launch.style.display = "none";
     } else if (state === "connecting") {
@@ -86,14 +88,22 @@ export class SatMouseStatus extends HTMLElement {
       this.text.textContent = "Not running";
       this.launch.style.display = "inline-block";
       this.launch.disabled = false;
-      this.launch.textContent = "Launch SatMouse";
+      this.launch.textContent = this.showDownload ? "Download SatMouse" : "Launch SatMouse";
     } else {
       this.text.textContent = "Disconnected";
       this.launch.style.display = "none";
     }
   }
 
+  private showDownload = false;
+
   private startLaunchFlow(): void {
+    if (this.showDownload) {
+      // Second click — navigate to download page
+      window.location.href = "https://github.com/kelnishi/SatMouse/releases/latest";
+      return;
+    }
+
     this.launch.textContent = "Connecting...";
     this.launch.disabled = true;
 
@@ -106,15 +116,14 @@ export class SatMouseStatus extends HTMLElement {
       attempts++;
       if (this.manager?.state === "connected") {
         this.stopPoll();
+        this.showDownload = false;
         return;
       }
       if (attempts >= 5) {
         this.stopPoll();
+        this.showDownload = true;
         this.launch.disabled = false;
-        this.launch.textContent = "Launch SatMouse";
-        if (confirm("SatMouse doesn't appear to be installed. Go to the download page?")) {
-          window.open("https://github.com/kelnishi/SatMouse/releases/latest", "_blank", "noopener");
-        }
+        this.launch.textContent = "Download SatMouse";
         return;
       }
       this.manager?.retry();
