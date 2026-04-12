@@ -1,6 +1,6 @@
 {
   "name": "@kelnishi/satmouse",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "6DOF spatial input bridge — run with npx @kelnishi/satmouse",
   "license": "MIT",
   "bin": {
