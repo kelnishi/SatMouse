@@ -61,6 +61,16 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     this.activePlugins.clear();
   }
 
+  /** Stop all plugins and reconnect — picks up newly connected devices */
+  async rescan(enabledIds?: string[]): Promise<void> {
+    this.stop();
+    // Re-wire and reconnect all plugins
+    for (const [id, plugin] of this.plugins) {
+      this.wirePlugin(plugin);
+    }
+    await this.start(enabledIds);
+  }
+
   getConnectedDevices(): DeviceInfo[] {
     const devices: DeviceInfo[] = [];
     for (const id of this.activePlugins) {

@@ -297,7 +297,7 @@ var SatMouseConnection = class extends TypedEmitter {
       this.options.tdUrl = this.options.tdUrl ?? parsed.tdUrl;
     }
     if (!wtUrl && !wsUrl) {
-      const tdUrl = this.options.tdUrl ?? new URL("/td.json", globalThis.location?.origin ?? "http://localhost:18945").href;
+      const tdUrl = this.options.tdUrl ?? "http://localhost:18945/td.json";
       try {
         const td = await fetchThingDescription(tdUrl);
         const endpoints = resolveEndpoints(td);
@@ -307,7 +307,7 @@ var SatMouseConnection = class extends TypedEmitter {
         this.deviceInfoUrl = endpoints.deviceInfoUrl ?? null;
       } catch (err) {
         this.emit("error", err instanceof Error ? err : new Error(String(err)));
-        wsUrl = `ws://${globalThis.location?.hostname ?? "localhost"}:${globalThis.location?.port ?? "18945"}/spatial`;
+        wsUrl = "ws://localhost:18945/spatial";
       }
     }
     for (const proto of this.options.transports) {
