@@ -1,5 +1,13 @@
 # SatMouse
 
+[![CI](https://github.com/kelnishi/SatMouse/actions/workflows/ci.yml/badge.svg)](https://github.com/kelnishi/SatMouse/actions/workflows/ci.yml)
+[![Build](https://github.com/kelnishi/SatMouse/actions/workflows/build.yml/badge.svg)](https://github.com/kelnishi/SatMouse/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/kelnishi/SatMouse?label=release)](https://github.com/kelnishi/SatMouse/releases/latest)
+[![npm @kelnishi/satmouse-client](https://img.shields.io/npm/v/@kelnishi/satmouse-client?label=@kelnishi/satmouse-client)](https://www.npmjs.com/package/@kelnishi/satmouse-client)
+[![npm @kelnishi/satmouse](https://img.shields.io/npm/v/@kelnishi/satmouse?label=@kelnishi/satmouse)](https://www.npmjs.com/package/@kelnishi/satmouse)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/kelnishi?label=sponsor)](https://github.com/sponsors/kelnishi)
+
 A bridge application that streams 6DOF spatial input device data to apps over the network. Zero-config discovery via mDNS and W3C Web of Things, with WebTransport (HTTP/3 QUIC) for low-latency streaming and WebSocket fallback.
 
 ![Architecture](docs/images/architecture.png)
