@@ -9,6 +9,8 @@ export interface SpatialData {
   translation: Vec3;
   rotation: Vec3;
   timestamp: number;
+  /** Source device ID (e.g., "cnx-c635", "hid-054c-5c4") */
+  deviceId?: string;
 }
 
 /** Button press/release event — matches button-event.schema.json */
@@ -30,7 +32,7 @@ export interface DeviceInfo {
   connected?: boolean;
 }
 
-export type ConnectionState = "disconnected" | "connecting" | "connected";
+export type ConnectionState = "disconnected" | "connecting" | "connected" | "failed";
 export type TransportProtocol = "webtransport" | "websocket" | "none";
 
 export interface SatMouseEvents {
@@ -79,6 +81,8 @@ export interface ConnectOptions {
   transports?: TransportProtocol[];
   /** Auto-reconnect delay in ms. 0 to disable. Default: 2000 */
   reconnectDelay?: number;
+  /** Max reconnect attempts before giving up. Default: 3 */
+  maxRetries?: number;
   /** WebSocket subprotocol. Default: "satmouse-json" */
   wsSubprotocol?: "satmouse-json" | "satmouse-binary";
 }

@@ -36,14 +36,17 @@ export interface InputConfig {
 
 export const DEFAULT_CONFIG: InputConfig = {
   sensitivity: { translation: 0.001, rotation: 0.001 },
-  flip: { tx: false, ty: true, tz: true, rx: false, ry: true, rz: true },
+  flip: { tx: false, ty: false, tz: false, rx: false, ry: false, rz: false },
   deadZone: 0,
   dominant: false,
   axisRemap: { tx: "x", ty: "y", tz: "z", rx: "x", ry: "y", rz: "z" },
   lockPosition: false,
   lockRotation: false,
   actionMap: { ...DEFAULT_ACTION_MAP },
-  devices: {},
+  devices: {
+    // SpaceMouse Z-up → Three.js Y-up axis correction
+    "cnx-*": { flip: { ty: true, tz: true, ry: true, rz: true } },
+  },
 };
 
 export function mergeConfig(base: InputConfig, partial: Partial<InputConfig>): InputConfig {

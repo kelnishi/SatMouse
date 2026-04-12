@@ -51,8 +51,8 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
   private storage?: StorageAdapter;
   private knownDevices = new Map<string, DeviceInfo>();
 
-  // Accumulator: sums all device inputs per frame tick
-  private accumulator = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 };
+  // Per-device accumulators: latest value from each device per frame tick
+  private deviceAccumulators = new Map<string, { tx: number; ty: number; tz: number; rx: number; ry: number; rz: number }>();
   private accDirty = false;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -166,15 +166,21 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
   private wireConnection(connection: SatMouseConnection): void {
     connection.on("spatialData", (raw) => {
       this.emit("rawSpatialData", raw);
-      // Accumulate: take max absolute value per axis across all events in this frame.
-      // This merges inputs from multiple devices without amplifying single-device data.
-      const acc = this.accumulator;
-      acc.tx = Math.abs(raw.translation.x) > Math.abs(acc.tx) ? raw.translation.x : acc.tx;
-      acc.ty = Math.abs(raw.translation.y) > Math.abs(acc.ty) ? raw.translation.y : acc.ty;
-      acc.tz = Math.abs(raw.translation.z) > Math.abs(acc.tz) ? raw.translation.z : acc.tz;
-      acc.rx = Math.abs(raw.rotation.x) > Math.abs(acc.rx) ? raw.rotation.x : acc.rx;
-      acc.ry = Math.abs(raw.rotation.y) > Math.abs(acc.ry) ? raw.rotation.y : acc.ry;
-      acc.rz = Math.abs(raw.rotation.z) > Math.abs(acc.rz) ? raw.rotation.z : acc.rz;
+
+      const id = raw.deviceId ?? "_default";
+
+      // Apply per-device transforms BEFORE accumulating
+      const processed = this.processPerDevice(raw, id);
+
+      // Store latest per-device processed values
+      this.deviceAccumulators.set(id, {
+        tx: processed.translation.x,
+        ty: processed.translation.y,
+        tz: processed.translation.z,
+        rx: processed.rotation.x,
+        ry: processed.rotation.y,
+        rz: processed.rotation.z,
+      });
       this.accDirty = true;
     });
 
@@ -190,31 +196,50 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
   private flushAccumulator(): void {
     if (!this.accDirty) return;
 
-    const raw: SpatialData = {
-      translation: { x: this.accumulator.tx, y: this.accumulator.ty, z: this.accumulator.tz },
-      rotation: { x: this.accumulator.rx, y: this.accumulator.ry, z: this.accumulator.rz },
+    // Merge all device accumulators: sum contributions from each device
+    const merged = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 };
+    for (const acc of this.deviceAccumulators.values()) {
+      merged.tx += acc.tx;
+      merged.ty += acc.ty;
+      merged.tz += acc.tz;
+      merged.rx += acc.rx;
+      merged.ry += acc.ry;
+      merged.rz += acc.rz;
+    }
+
+    // Reset all device accumulators
+    this.deviceAccumulators.clear();
+    this.accDirty = false;
+
+    const data: SpatialData = {
+      translation: { x: merged.tx, y: merged.ty, z: merged.tz },
+      rotation: { x: merged.rx, y: merged.ry, z: merged.rz },
       timestamp: performance.now() * 1000,
     };
 
-    // Reset accumulator
-    this.accumulator = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 };
-    this.accDirty = false;
-
-    const { spatial, actions } = this.processSpatialData(raw);
+    // Apply global transforms (action map, locks)
+    const { spatial, actions } = this.applyGlobalTransforms(data);
     if (spatial) this.emit("spatialData", spatial);
     if (actions) this.emit("actionValues", actions);
   }
 
-  private processSpatialData(raw: SpatialData): { spatial: SpatialData | null; actions: ActionValues | null } {
-    const cfg = this._config;
+  /** Per-device transforms: flip, sensitivity, dead zone, dominant, axis remap */
+  private processPerDevice(raw: SpatialData, deviceId: string): SpatialData {
+    const cfg = resolveDeviceConfig(this._config, deviceId);
     let data = raw;
 
-    // Transform pipeline
     if (cfg.deadZone > 0) data = applyDeadZone(data, cfg.deadZone);
     if (cfg.dominant) data = applyDominant(data);
     data = applyFlip(data, cfg.flip);
     data = applyAxisRemap(data, cfg.axisRemap);
     data = applySensitivity(data, cfg.sensitivity);
+
+    return data;
+  }
+
+  /** Global transforms applied after per-device merge: locks + action map */
+  private applyGlobalTransforms(data: SpatialData): { spatial: SpatialData | null; actions: ActionValues | null } {
+    const cfg = this._config;
 
     if (cfg.lockPosition) {
       data = { ...data, translation: { x: 0, y: 0, z: 0 } };
@@ -223,11 +248,7 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
       data = { ...data, rotation: { x: 0, y: 0, z: 0 } };
     }
 
-    // Apply action map: remap transformed axes to named actions
     const actions = applyActionMap(data, cfg.actionMap);
-
-    // Convert action values back to spatial data for consumers that
-    // expect the standard tx/ty/tz/rx/ry/rz format
     const spatial = actionValuesToSpatialData(actions, data.timestamp);
 
     return { spatial, actions };

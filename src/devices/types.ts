@@ -5,6 +5,8 @@ export interface SpatialData {
   translation: { x: number; y: number; z: number };
   rotation: { x: number; y: number; z: number };
   timestamp: number;
+  /** Source device ID (e.g., "cnx-c635", "hid-054c-5c4") */
+  deviceId?: string;
 }
 
 /** Button press/release event — matches button-event.schema.json */
