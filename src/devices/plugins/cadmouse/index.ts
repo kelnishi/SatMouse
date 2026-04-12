@@ -1,5 +1,5 @@
 import { DevicePlugin, type DeviceInfo } from "../../types.js";
-import { createConnexionDriver, lookupProduct, buildDeviceInfo, type ConnexionDriver } from "../../drivers/connexion/index.js";
+import { getConnexionDriver, lookupProduct, buildDeviceInfo, type ConnexionDriver } from "../../drivers/connexion/index.js";
 
 /**
  * 3Dconnexion CadMouse plugin — precision mouse with programmable buttons.
@@ -15,7 +15,7 @@ export class CadMousePlugin extends DevicePlugin {
 
   async isAvailable(): Promise<boolean> {
     try {
-      this.driver = await createConnexionDriver();
+      this.driver = await getConnexionDriver();
       return this.driver.probe();
     } catch {
       return false;
@@ -23,9 +23,9 @@ export class CadMousePlugin extends DevicePlugin {
   }
 
   async connect(): Promise<void> {
-    if (!this.driver) this.driver = await createConnexionDriver();
+    if (!this.driver) this.driver = await getConnexionDriver();
 
-    this.driver.onRawEvent = (event) => {
+    this.driver.on("rawEvent", (event) => {
       const product = lookupProduct(event.productId);
       if (product.family !== "cadmouse") return;
 
@@ -39,20 +39,20 @@ export class CadMousePlugin extends DevicePlugin {
         }
         this.prevButtons = event.buttons;
       }
-    };
+    });
 
-    this.driver.onDeviceAdded = (productId, deviceId) => {
+    this.driver.on("deviceAdded", (productId, deviceId) => {
       if (lookupProduct(productId).family === "cadmouse") {
         this.emit("deviceConnected", buildDeviceInfo(productId, deviceId));
       }
-    };
+    });
 
-    this.driver.onDeviceRemoved = (deviceId) => {
+    this.driver.on("deviceRemoved", (deviceId) => {
       this.emit("deviceDisconnected", {
         id: deviceId, name: "CadMouse", model: "CadMouse", vendor: "3Dconnexion",
         vendorId: 0x046d, productId: 0, connectionType: "unknown",
       });
-    };
+    });
 
     await this.driver.connect();
   }

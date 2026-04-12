@@ -1,5 +1,5 @@
 import { DevicePlugin, type DeviceInfo } from "../../types.js";
-import { createConnexionDriver, lookupProduct, buildDeviceInfo, type ConnexionDriver } from "../../drivers/connexion/index.js";
+import { getConnexionDriver, lookupProduct, buildDeviceInfo, type ConnexionDriver } from "../../drivers/connexion/index.js";
 
 /**
  * 3Dconnexion SpaceMouse plugin — 6DOF spatial input devices.
@@ -16,7 +16,7 @@ export class SpaceMousePlugin extends DevicePlugin {
 
   async isAvailable(): Promise<boolean> {
     try {
-      this.driver = await createConnexionDriver();
+      this.driver = await getConnexionDriver();
       return this.driver.probe();
     } catch {
       return false;
@@ -24,10 +24,9 @@ export class SpaceMousePlugin extends DevicePlugin {
   }
 
   async connect(): Promise<void> {
-    if (!this.driver) this.driver = await createConnexionDriver();
+    if (!this.driver) this.driver = await getConnexionDriver();
 
-    this.driver.onRawEvent = (event) => {
-      // Only handle spacemouse family devices
+    this.driver.on("rawEvent", (event) => {
       const product = lookupProduct(event.productId);
       if (product.family !== "spacemouse" && product.family !== "unknown") return;
 
@@ -47,21 +46,21 @@ export class SpaceMousePlugin extends DevicePlugin {
         }
         this.prevButtons = event.buttons;
       }
-    };
+    });
 
-    this.driver.onDeviceAdded = (productId, deviceId) => {
+    this.driver.on("deviceAdded", (productId, deviceId) => {
       const product = lookupProduct(productId);
       if (product.family === "spacemouse" || product.family === "unknown") {
         this.emit("deviceConnected", buildDeviceInfo(productId, deviceId));
       }
-    };
+    });
 
-    this.driver.onDeviceRemoved = (deviceId) => {
+    this.driver.on("deviceRemoved", (deviceId) => {
       this.emit("deviceDisconnected", {
         id: deviceId, name: "SpaceMouse", model: "SpaceMouse", vendor: "3Dconnexion",
         vendorId: 0x046d, productId: 0, connectionType: "unknown",
       });
-    };
+    });
 
     await this.driver.connect();
   }

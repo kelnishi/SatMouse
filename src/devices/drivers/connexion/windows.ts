@@ -1,10 +1,8 @@
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import type { DeviceInfo } from "../../types.js";
-import type { ConnexionDriver, ConnexionRawEvent } from "./types.js";
+import { ConnexionDriver } from "./types.js";
+import type { ConnexionRawEvent } from "./types.js";
 import { buildDeviceInfo } from "./products.js";
-
-const require = createRequire(import.meta.url);
 
 // 3DxWare SDK paths — the SDK installs SiApp.dll alongside the driver
 const SDK_PATHS = [
@@ -18,11 +16,7 @@ const SDK_PATHS = [
  * Uses koffi to load the 3DxWare DLL and poll for device events.
  * The Windows SDK uses SiOpen/SiGetEvent for device communication.
  */
-export class WindowsConnexionDriver implements ConnexionDriver {
-  onRawEvent: ConnexionDriver["onRawEvent"] = null;
-  onDeviceAdded: ConnexionDriver["onDeviceAdded"] = null;
-  onDeviceRemoved: ConnexionDriver["onDeviceRemoved"] = null;
-
+export class WindowsConnexionDriver extends ConnexionDriver {
   private devices: DeviceInfo[] = [];
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private siHandle: any = null;
@@ -33,7 +27,7 @@ export class WindowsConnexionDriver implements ConnexionDriver {
   }
 
   async connect(): Promise<void> {
-    const koffi: any = require("koffi");
+    const koffi: any = await import("koffi" as any).then(m => m.default ?? m);
 
     const sdkPath = SDK_PATHS.find((p) => existsSync(p));
     if (!sdkPath) throw new Error("3DxWare SDK not found");
@@ -84,7 +78,7 @@ export class WindowsConnexionDriver implements ConnexionDriver {
           buttons: prevButtons,
           productId: 0,
         };
-        this.onRawEvent?.(event);
+        this.emit("rawEvent", event);
       } else if (eventType === 2) {
         // Button event
         const buttons = eventBuf.readUInt32LE(4);
@@ -96,14 +90,14 @@ export class WindowsConnexionDriver implements ConnexionDriver {
             productId: 0,
           };
           prevButtons = buttons;
-          this.onRawEvent?.(event);
+          this.emit("rawEvent", event);
         }
       } else if (eventType === 5) {
         // Device change event
         const deviceId = `cnx-win-${Date.now().toString(16)}`;
         const info = buildDeviceInfo(0, deviceId);
         this.devices = [info];
-        this.onDeviceAdded?.(0, deviceId);
+        this.emit("deviceAdded", 0, deviceId);
       }
     }, 4);
   }

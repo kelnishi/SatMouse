@@ -1,7 +1,4 @@
-import { createRequire } from "node:module";
 import type { Tray, TrayActions } from "./types.js";
-
-const require = createRequire(import.meta.url);
 
 const OBJC_PATH = "/usr/lib/libobjc.A.dylib";
 
@@ -19,8 +16,8 @@ export class MacOSTray implements Tray {
   private callbackHandles: any[] = [];
   private eventPump: ReturnType<typeof setInterval> | null = null;
 
-  start(actions: TrayActions): void {
-    const koffi: any = require("koffi");
+  async start(actions: TrayActions): Promise<void> {
+    const koffi: any = await import("koffi" as any).then((m: any) => m.default ?? m);
     const objc = koffi.load(OBJC_PATH);
 
     // ObjC runtime functions

@@ -8,7 +8,7 @@ echo "Bundling with esbuild..."
 npx esbuild src/main.ts \
   --bundle \
   --platform=node \
-  --format=esm \
+  --format=cjs \
   --outfile=dist/main.js \
   --external:koffi \
   --external:@fails-components/webtransport \
