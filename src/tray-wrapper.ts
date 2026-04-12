@@ -46,10 +46,13 @@ function main() {
   msg_l(NSApp, sel("activateIgnoringOtherApps:"), 1);
   msg_l(NSApp, sel("setActivationPolicy:"), 1); // Then Accessory
 
-  // Resolve paths
-  const resourcesDir = join(dirname(process.execPath), "..");
+  // Resolve paths — execPath is Contents/MacOS/satmouse
+  const contentsDir = join(dirname(process.execPath), "..");
+  const resourcesDir = join(contentsDir, "Resources");
   const mainCjs = join(resourcesDir, "main.cjs");
-  const nodeExe = process.execPath;
+  // Child process must use Resources/bin/node (not MacOS/satmouse)
+  // because 3DxWare rejects binaries in Contents/MacOS/
+  const childNodeExe = join(resourcesDir, "bin", "node");
 
   // Create action handler class
   const ActionProto = koffi.proto("void TrayAction(void *self, void *_cmd, void *sender)");
@@ -113,7 +116,7 @@ function main() {
   }, 16);
 
   // Spawn the server process
-  serverProcess = spawn(nodeExe, [mainCjs], {
+  serverProcess = spawn(childNodeExe, [mainCjs], {
     stdio: ["ignore", "inherit", "inherit"],
     env: { ...process.env, SATMOUSE_SKIP_TRAY: "1" },
   });

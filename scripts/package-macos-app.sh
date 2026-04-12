@@ -15,8 +15,12 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
 
-# Ship Node binary in Resources/bin/ (NOT MacOS/ — 3DxWare daemon validates
-# binaries in Contents/MacOS/ and rejects unrecognized code signatures)
+# Node binary in two locations:
+# - MacOS/node: runs the tray wrapper (AppKit, owns the menu bar icon)
+# - Resources/bin/node: runs the server child (3Dconnexion, transports)
+cp "$NODE_BIN" "$APP/Contents/MacOS/node"
+chmod +x "$APP/Contents/MacOS/node"
+
 mkdir -p "$APP/Contents/Resources/bin"
 cp "$NODE_BIN" "$APP/Contents/Resources/bin/node"
 chmod +x "$APP/Contents/Resources/bin/node"
@@ -25,15 +29,29 @@ chmod +x "$APP/Contents/Resources/bin/node"
 cp dist/main.js "$APP/Contents/Resources/main.cjs"
 cp dist/tray-wrapper.cjs "$APP/Contents/Resources/tray-wrapper.cjs"
 
-# Launcher: tray wrapper is the main process (owns the menu bar icon).
-# It spawns node main.cjs as a child for the server/device work.
-cat > "$APP/Contents/MacOS/satmouse" << 'LAUNCHER'
-#!/bin/bash
-DIR="$(cd "$(dirname "$0")" && pwd)"
-RESOURCES="$DIR/../Resources"
-exec "$RESOURCES/bin/node" "$RESOURCES/tray-wrapper.cjs"
-LAUNCHER
-chmod +x "$APP/Contents/MacOS/satmouse"
+# Compile a native launcher that execs node with the tray wrapper.
+# This is CFBundleExecutable — macOS tracks it for menu bar identity.
+# execv replaces the process, so node inherits the PID and bundle association.
+cat > /tmp/satmouse_launcher.c << 'CSRC'
+#include <unistd.h>
+#include <libgen.h>
+#include <string.h>
+#include <stdio.h>
+int main(int argc, char *argv[]) {
+    char dir[4096];
+    strcpy(dir, argv[0]);
+    char *base = dirname(dir);
+    char node_path[4096], script_path[4096];
+    snprintf(node_path, sizeof(node_path), "%s/node", base);
+    snprintf(script_path, sizeof(script_path), "%s/../Resources/tray-wrapper.cjs", base);
+    char *new_argv[] = { node_path, script_path, NULL };
+    execv(node_path, new_argv);
+    perror("execv");
+    return 1;
+}
+CSRC
+cc -o "$APP/Contents/MacOS/satmouse" /tmp/satmouse_launcher.c -O2
+rm /tmp/satmouse_launcher.c
 
 # Copy native addon node_modules into Resources
 if [ -d "node_modules/koffi" ]; then
