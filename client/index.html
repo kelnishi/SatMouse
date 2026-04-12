@@ -15,16 +15,22 @@
 </head>
 <body>
   <header id="status-bar">
-    <satmouse-status></satmouse-status>
+    <button id="satmouse-icon" popovertarget="satmouse-popover" title="SatMouse">
+      <span class="icon-dot"></span>
+    </button>
+    <div id="satmouse-popover" popover>
+      <satmouse-status></satmouse-status>
+      <hr>
+      <satmouse-debug></satmouse-debug>
+      <hr>
+      <satmouse-devices></satmouse-devices>
+    </div>
   </header>
   <main>
     <section id="viewport">
       <canvas id="canvas"></canvas>
     </section>
     <aside id="sidebar">
-      <h2>Debug</h2>
-      <satmouse-debug></satmouse-debug>
-
       <h2>Controls</h2>
       <div class="controls">
         <button id="btn-reset">Reset</button>
@@ -37,9 +43,6 @@
           <button id="btn-dominant" class="toggle">Dominant</button>
         </div>
       </div>
-
-      <h2>Devices</h2>
-      <satmouse-devices></satmouse-devices>
 
       <h3>Button Log</h3>
       <div id="button-log"></div>

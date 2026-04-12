@@ -26,3 +26,11 @@ export function onManagerReady(fn: (m: InputManager) => void): void {
   if (globalManager) fn(globalManager);
   else listeners.add(fn);
 }
+
+/** Subscribe to manager availability. Calls fn immediately if already available.
+ *  Returns an unsubscribe function (for disconnectedCallback). */
+export function onManager(fn: (m: InputManager) => void): () => void {
+  if (globalManager) fn(globalManager);
+  else listeners.add(fn);
+  return () => listeners.delete(fn);
+}

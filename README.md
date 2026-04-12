@@ -30,7 +30,7 @@ Or install via npm:
 npx @kelnishi/satmouse
 ```
 
-On macOS, double-click `SatMouse.app` — a 🛰 icon appears in the menu bar. No dock icon, no terminal needed.
+On macOS, move `SatMouse.app` to `/Applications` or `~/Applications` before launching. Running from Downloads will fail due to macOS App Translocation. Double-click the app — a 🛰 icon appears in the menu bar. No dock icon, no terminal needed.
 
 ### Connect from your app
 

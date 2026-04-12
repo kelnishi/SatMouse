@@ -1,4 +1,4 @@
-import { onManagerReady } from "./registry.js";
+import { onManager } from "./registry.js";
 import type { InputManager } from "../utils/input-manager.js";
 import type { ConnectionState, TransportProtocol } from "../core/types.js";
 
@@ -25,7 +25,10 @@ export class SatMouseStatus extends HTMLElement {
   private text!: HTMLElement;
   private proto!: HTMLElement;
   private launch!: HTMLButtonElement;
-  private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private manager: InputManager | null = null;
+  private unsub: (() => void) | null = null;
+
+  private stateHandler = (state: ConnectionState, protocol: TransportProtocol) => this.update(state, protocol);
 
   constructor() {
     super();
@@ -37,9 +40,7 @@ export class SatMouseStatus extends HTMLElement {
     this.launch = shadow.querySelector(".launch")!;
 
     this.launch.addEventListener("click", () => {
-      // Try the URL scheme — if installed, the OS opens the app
       window.location.href = "satmouse://launch";
-      // If we're still here after 1s, the scheme wasn't handled
       setTimeout(() => {
         if (!document.hidden) {
           if (confirm("SatMouse doesn't appear to be installed. Go to the download page?")) {
@@ -51,32 +52,43 @@ export class SatMouseStatus extends HTMLElement {
   }
 
   connectedCallback() {
-    // Show launch button if still disconnected after 3s (covers cold page load)
-    this.disconnectTimer = setTimeout(() => { this.launch.style.display = "inline-block"; }, 3000);
-    onManagerReady((manager) => this.bind(manager));
+    this.unsub = onManager((mgr) => this.bind(mgr));
   }
 
-  private bind(manager: InputManager): void {
-    manager.on("stateChange", (state: ConnectionState, protocol: TransportProtocol) => {
-      this.dot.dataset.state = state;
-      this.proto.textContent = protocol !== "none" ? protocol : "";
+  disconnectedCallback() {
+    this.unsub?.();
+    this.unbind();
+  }
 
-      if (this.disconnectTimer) { clearTimeout(this.disconnectTimer); this.disconnectTimer = null; }
+  private bind(mgr: InputManager): void {
+    this.unbind();
+    this.manager = mgr;
+    mgr.on("stateChange", this.stateHandler);
+    this.update(mgr.state, mgr.protocol);
+  }
 
-      if (state === "connected") {
-        this.text.textContent = "Connected";
-        this.launch.style.display = "none";
-      } else if (state === "connecting") {
-        this.text.textContent = "Connecting...";
-        this.launch.style.display = "none";
-      } else if (state === "failed") {
-        this.text.textContent = "Not running";
-        this.launch.style.display = "inline-block";
-      } else {
-        this.text.textContent = "Disconnected";
-        this.launch.style.display = "none";
-      }
-    });
+  private unbind(): void {
+    this.manager?.off("stateChange", this.stateHandler);
+    this.manager = null;
+  }
+
+  private update(state: ConnectionState, protocol: TransportProtocol): void {
+    this.dot.dataset.state = state;
+    this.proto.textContent = protocol !== "none" ? protocol : "";
+
+    if (state === "connected") {
+      this.text.textContent = "Connected";
+      this.launch.style.display = "none";
+    } else if (state === "connecting") {
+      this.text.textContent = "Connecting...";
+      this.launch.style.display = "none";
+    } else if (state === "failed") {
+      this.text.textContent = "Not running";
+      this.launch.style.display = "inline-block";
+    } else {
+      this.text.textContent = "Disconnected";
+      this.launch.style.display = "none";
+    }
   }
 }
 

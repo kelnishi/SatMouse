@@ -13,6 +13,13 @@ manager.addConnection(connection);
 // Register manager for Web Components (<satmouse-status>, <satmouse-devices>, <satmouse-debug>)
 registerSatMouse(manager);
 
+// Sync icon dot color with connection state
+const iconDot = document.querySelector("#satmouse-icon .icon-dot") as HTMLElement;
+if (iconDot) {
+  const colors: Record<string, string> = { connected: "#2ecc71", connecting: "#f39c12", failed: "#e74c3c", disconnected: "#e74c3c" };
+  manager.on("stateChange", (state) => { iconDot.style.background = colors[state] ?? "#e74c3c"; });
+}
+
 // ---- 3D scene ----
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 init(canvas);

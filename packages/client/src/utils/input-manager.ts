@@ -30,9 +30,19 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
   private flushTimer: ReturnType<typeof setInterval> | null = null;
 
   private _config: InputConfig;
+  private _state: ConnectionState = "disconnected";
+  private _protocol: TransportProtocol = "none";
 
   get config(): InputConfig {
     return this._config;
+  }
+
+  get state(): ConnectionState {
+    return this._state;
+  }
+
+  get protocol(): TransportProtocol {
+    return this._protocol;
   }
 
   constructor(config?: Partial<InputConfig>, storage?: StorageAdapter) {
@@ -144,7 +154,11 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
     });
 
     connection.on("buttonEvent", (event) => this.emit("buttonEvent", event));
-    connection.on("stateChange", (state, proto) => this.emit("stateChange", state, proto));
+    connection.on("stateChange", (state, proto) => {
+      this._state = state;
+      this._protocol = proto;
+      this.emit("stateChange", state, proto);
+    });
     connection.on("deviceStatus", (event, device) => {
       if (event === "connected") this.knownDevices.set(device.id, device);
       else this.knownDevices.delete(device.id);

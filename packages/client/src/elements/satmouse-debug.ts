@@ -1,4 +1,4 @@
-import { onManagerReady } from "./registry.js";
+import { onManager } from "./registry.js";
 import type { InputManager } from "../utils/input-manager.js";
 import type { SpatialData, ConnectionState, TransportProtocol } from "../core/types.js";
 
@@ -22,6 +22,24 @@ const TEMPLATE = `
 export class SatMouseDebug extends HTMLElement {
   private els: Record<string, HTMLElement> = {};
   private frameCount = 0;
+  private fpsInterval: ReturnType<typeof setInterval> | null = null;
+  private manager: InputManager | null = null;
+  private unsub: (() => void) | null = null;
+
+  private spatialHandler = (data: SpatialData) => {
+    this.frameCount++;
+    this.els.tx.textContent = String(Math.round(data.translation.x));
+    this.els.ty.textContent = String(Math.round(data.translation.y));
+    this.els.tz.textContent = String(Math.round(data.translation.z));
+    this.els.rx.textContent = String(Math.round(data.rotation.x));
+    this.els.ry.textContent = String(Math.round(data.rotation.y));
+    this.els.rz.textContent = String(Math.round(data.rotation.z));
+  };
+
+  private stateHandler = (state: ConnectionState, protocol: TransportProtocol) => {
+    this.els.state.textContent = state;
+    this.els.protocol.textContent = protocol !== "none" ? protocol : "";
+  };
 
   constructor() {
     super();
@@ -36,29 +54,37 @@ export class SatMouseDebug extends HTMLElement {
   }
 
   connectedCallback() {
-    onManagerReady((manager) => this.bind(manager));
-  }
-
-  private bind(manager: InputManager): void {
-    manager.on("rawSpatialData", (data: SpatialData) => {
-      this.frameCount++;
-      this.els.tx.textContent = String(Math.round(data.translation.x));
-      this.els.ty.textContent = String(Math.round(data.translation.y));
-      this.els.tz.textContent = String(Math.round(data.translation.z));
-      this.els.rx.textContent = String(Math.round(data.rotation.x));
-      this.els.ry.textContent = String(Math.round(data.rotation.y));
-      this.els.rz.textContent = String(Math.round(data.rotation.z));
-    });
-
-    manager.on("stateChange", (state: ConnectionState, protocol: TransportProtocol) => {
-      this.els.state.textContent = state;
-      this.els.protocol.textContent = protocol !== "none" ? protocol : "";
-    });
-
-    setInterval(() => {
+    this.unsub = onManager((mgr) => this.bind(mgr));
+    this.fpsInterval = setInterval(() => {
       this.els.fps.textContent = String(this.frameCount);
       this.frameCount = 0;
     }, 1000);
+  }
+
+  disconnectedCallback() {
+    this.unsub?.();
+    this.unbind();
+    if (this.fpsInterval) {
+      clearInterval(this.fpsInterval);
+      this.fpsInterval = null;
+    }
+  }
+
+  private bind(mgr: InputManager): void {
+    this.unbind();
+    this.manager = mgr;
+    mgr.on("rawSpatialData", this.spatialHandler);
+    mgr.on("stateChange", this.stateHandler);
+    this.els.state.textContent = mgr.state;
+    this.els.protocol.textContent = mgr.protocol !== "none" ? mgr.protocol : "";
+  }
+
+  private unbind(): void {
+    if (this.manager) {
+      this.manager.off("rawSpatialData", this.spatialHandler);
+      this.manager.off("stateChange", this.stateHandler);
+      this.manager = null;
+    }
   }
 }
 

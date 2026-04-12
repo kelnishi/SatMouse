@@ -572,8 +572,16 @@ var InputManager = class extends TypedEmitter {
   accDirty = false;
   flushTimer = null;
   _config;
+  _state = "disconnected";
+  _protocol = "none";
   get config() {
     return this._config;
+  }
+  get state() {
+    return this._state;
+  }
+  get protocol() {
+    return this._protocol;
   }
   constructor(config, storage) {
     super();
@@ -670,7 +678,11 @@ var InputManager = class extends TypedEmitter {
       this.accDirty = true;
     });
     connection2.on("buttonEvent", (event) => this.emit("buttonEvent", event));
-    connection2.on("stateChange", (state, proto) => this.emit("stateChange", state, proto));
+    connection2.on("stateChange", (state, proto) => {
+      this._state = state;
+      this._protocol = proto;
+      this.emit("stateChange", state, proto);
+    });
     connection2.on("deviceStatus", (event, device) => {
       if (event === "connected") this.knownDevices.set(device.id, device);
       else this.knownDevices.delete(device.id);
@@ -758,9 +770,10 @@ function registerSatMouse(manager2) {
   for (const fn of listeners) fn(manager2);
   listeners.clear();
 }
-function onManagerReady(fn) {
+function onManager(fn) {
   if (globalManager) fn(globalManager);
   else listeners.add(fn);
+  return () => listeners.delete(fn);
 }
 
 // packages/client/src/elements/satmouse-status.ts
@@ -786,7 +799,9 @@ var SatMouseStatus = class extends HTMLElement {
   text;
   proto;
   launch;
-  disconnectTimer = null;
+  manager = null;
+  unsub = null;
+  stateHandler = (state, protocol) => this.update(state, protocol);
   constructor() {
     super();
     const shadow = this.attachShadow({ mode: "open" });
@@ -807,33 +822,38 @@ var SatMouseStatus = class extends HTMLElement {
     });
   }
   connectedCallback() {
-    this.disconnectTimer = setTimeout(() => {
-      this.launch.style.display = "inline-block";
-    }, 3e3);
-    onManagerReady((manager2) => this.bind(manager2));
+    this.unsub = onManager((mgr) => this.bind(mgr));
   }
-  bind(manager2) {
-    manager2.on("stateChange", (state, protocol) => {
-      this.dot.dataset.state = state;
-      this.proto.textContent = protocol !== "none" ? protocol : "";
-      if (this.disconnectTimer) {
-        clearTimeout(this.disconnectTimer);
-        this.disconnectTimer = null;
-      }
-      if (state === "connected") {
-        this.text.textContent = "Connected";
-        this.launch.style.display = "none";
-      } else if (state === "connecting") {
-        this.text.textContent = "Connecting...";
-        this.launch.style.display = "none";
-      } else if (state === "failed") {
-        this.text.textContent = "Not running";
-        this.launch.style.display = "inline-block";
-      } else {
-        this.text.textContent = "Disconnected";
-        this.launch.style.display = "none";
-      }
-    });
+  disconnectedCallback() {
+    this.unsub?.();
+    this.unbind();
+  }
+  bind(mgr) {
+    this.unbind();
+    this.manager = mgr;
+    mgr.on("stateChange", this.stateHandler);
+    this.update(mgr.state, mgr.protocol);
+  }
+  unbind() {
+    this.manager?.off("stateChange", this.stateHandler);
+    this.manager = null;
+  }
+  update(state, protocol) {
+    this.dot.dataset.state = state;
+    this.proto.textContent = protocol !== "none" ? protocol : "";
+    if (state === "connected") {
+      this.text.textContent = "Connected";
+      this.launch.style.display = "none";
+    } else if (state === "connecting") {
+      this.text.textContent = "Connecting...";
+      this.launch.style.display = "none";
+    } else if (state === "failed") {
+      this.text.textContent = "Not running";
+      this.launch.style.display = "inline-block";
+    } else {
+      this.text.textContent = "Disconnected";
+      this.launch.style.display = "none";
+    }
   }
 };
 customElements.define("satmouse-status", SatMouseStatus);
@@ -877,19 +897,39 @@ var SatMouseDevices = class extends HTMLElement {
     shadow.innerHTML = STYLES + `<div class="container"><span class="empty">No devices</span></div>`;
     this.container = shadow.querySelector(".container");
   }
+  unsub = null;
+  deviceStatusHandler = (event, device) => {
+    if (event === "connected") this.addDevice(device);
+    else this.removeDevice(device);
+  };
+  stateHandler = (state) => {
+    if (state === "connected") {
+      this.manager?.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d)));
+    }
+  };
   connectedCallback() {
-    onManagerReady((manager2) => {
-      this.manager = manager2;
-      manager2.on("deviceStatus", (event, device) => {
-        if (event === "connected") this.addDevice(device);
-        else this.removeDevice(device);
-      });
-      manager2.on("stateChange", (state) => {
-        if (state === "connected") {
-          manager2.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d)));
-        }
-      });
-    });
+    this.unsub = onManager((mgr) => this.bind(mgr));
+  }
+  disconnectedCallback() {
+    this.unsub?.();
+    this.unbind();
+    this.container.innerHTML = `<span class="empty">No devices</span>`;
+  }
+  bind(mgr) {
+    this.unbind();
+    this.manager = mgr;
+    mgr.on("deviceStatus", this.deviceStatusHandler);
+    mgr.on("stateChange", this.stateHandler);
+    if (mgr.state === "connected") {
+      mgr.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d)));
+    }
+  }
+  unbind() {
+    if (this.manager) {
+      this.manager.off("deviceStatus", this.deviceStatusHandler);
+      this.manager.off("stateChange", this.stateHandler);
+      this.manager = null;
+    }
   }
   addDevice(device) {
     const existing = this.shadowRoot.getElementById(`dev-${device.id}`);
@@ -1018,6 +1058,22 @@ var TEMPLATE2 = `
 var SatMouseDebug = class extends HTMLElement {
   els = {};
   frameCount = 0;
+  fpsInterval = null;
+  manager = null;
+  unsub = null;
+  spatialHandler = (data) => {
+    this.frameCount++;
+    this.els.tx.textContent = String(Math.round(data.translation.x));
+    this.els.ty.textContent = String(Math.round(data.translation.y));
+    this.els.tz.textContent = String(Math.round(data.translation.z));
+    this.els.rx.textContent = String(Math.round(data.rotation.x));
+    this.els.ry.textContent = String(Math.round(data.rotation.y));
+    this.els.rz.textContent = String(Math.round(data.rotation.z));
+  };
+  stateHandler = (state, protocol) => {
+    this.els.state.textContent = state;
+    this.els.protocol.textContent = protocol !== "none" ? protocol : "";
+  };
   constructor() {
     super();
     const shadow = this.attachShadow({ mode: "open" });
@@ -1030,26 +1086,34 @@ var SatMouseDebug = class extends HTMLElement {
     this.els.fps = shadow.querySelector(".fps");
   }
   connectedCallback() {
-    onManagerReady((manager2) => this.bind(manager2));
-  }
-  bind(manager2) {
-    manager2.on("rawSpatialData", (data) => {
-      this.frameCount++;
-      this.els.tx.textContent = String(Math.round(data.translation.x));
-      this.els.ty.textContent = String(Math.round(data.translation.y));
-      this.els.tz.textContent = String(Math.round(data.translation.z));
-      this.els.rx.textContent = String(Math.round(data.rotation.x));
-      this.els.ry.textContent = String(Math.round(data.rotation.y));
-      this.els.rz.textContent = String(Math.round(data.rotation.z));
-    });
-    manager2.on("stateChange", (state, protocol) => {
-      this.els.state.textContent = state;
-      this.els.protocol.textContent = protocol !== "none" ? protocol : "";
-    });
-    setInterval(() => {
+    this.unsub = onManager((mgr) => this.bind(mgr));
+    this.fpsInterval = setInterval(() => {
       this.els.fps.textContent = String(this.frameCount);
       this.frameCount = 0;
     }, 1e3);
+  }
+  disconnectedCallback() {
+    this.unsub?.();
+    this.unbind();
+    if (this.fpsInterval) {
+      clearInterval(this.fpsInterval);
+      this.fpsInterval = null;
+    }
+  }
+  bind(mgr) {
+    this.unbind();
+    this.manager = mgr;
+    mgr.on("rawSpatialData", this.spatialHandler);
+    mgr.on("stateChange", this.stateHandler);
+    this.els.state.textContent = mgr.state;
+    this.els.protocol.textContent = mgr.protocol !== "none" ? mgr.protocol : "";
+  }
+  unbind() {
+    if (this.manager) {
+      this.manager.off("rawSpatialData", this.spatialHandler);
+      this.manager.off("stateChange", this.stateHandler);
+      this.manager = null;
+    }
   }
 };
 customElements.define("satmouse-debug", SatMouseDebug);
@@ -1136,6 +1200,13 @@ var connection = new SatMouseConnection();
 var manager = new InputManager();
 manager.addConnection(connection);
 registerSatMouse(manager);
+var iconDot = document.querySelector("#satmouse-icon .icon-dot");
+if (iconDot) {
+  const colors = { connected: "#2ecc71", connecting: "#f39c12", failed: "#e74c3c", disconnected: "#e74c3c" };
+  manager.on("stateChange", (state) => {
+    iconDot.style.background = colors[state] ?? "#e74c3c";
+  });
+}
 var canvas = document.getElementById("canvas");
 init(canvas);
 var lockOrbit = false;
