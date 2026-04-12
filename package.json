@@ -1,6 +1,6 @@
 {
   "name": "satmouse",
-  "version": "0.9.10",
+  "version": "0.9.11",
   "description": "6DOF spatial input bridge — streams device data to web apps over WebTransport and WebSocket",
   "repository": {
       "type": "git",
