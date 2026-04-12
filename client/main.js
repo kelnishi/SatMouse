@@ -407,16 +407,25 @@ var SatMouseConnection = class extends TypedEmitter {
 };
 
 // packages/client/src/utils/action-map.ts
-var DEFAULT_ACTION_MAP = {
-  tx: { source: "tx" },
-  ty: { source: "ty" },
-  tz: { source: "tz" },
-  rx: { source: "rx" },
-  ry: { source: "ry" },
-  rz: { source: "rz" }
-};
+var FULL_AXES = ["tx", "ty", "tz", "rx", "ry", "rz"];
+var DEFAULT_ROUTES = [
+  { source: "tx", target: "tx" },
+  { source: "ty", target: "ty" },
+  { source: "tz", target: "tz" },
+  { source: "rx", target: "rx" },
+  { source: "ry", target: "ry" },
+  { source: "rz", target: "rz" }
+];
+function buildRoutes(axes) {
+  return axes.map((axis) => {
+    const base = axis.replace(/[+-]$/, "");
+    const flip = axis.endsWith("-");
+    return { source: axis, target: base, ...flip && { flip: true } };
+  });
+}
 function readAxis(data, axis) {
-  switch (axis) {
+  const base = axis.replace(/[+-]$/, "");
+  switch (base) {
     case "tx":
       return data.translation.x;
     case "ty":
@@ -429,75 +438,76 @@ function readAxis(data, axis) {
       return data.rotation.y;
     case "rz":
       return data.rotation.z;
+    default:
+      return 0;
   }
 }
-function applyActionMap(data, map) {
-  const result = {};
-  for (const [action, binding] of Object.entries(map)) {
-    let value = readAxis(data, binding.source);
-    if (binding.invert) value = -value;
-    value *= binding.scale ?? 1;
-    result[action] = value;
-  }
-  return result;
+function writeAxis(t, r, axis, value) {
+  const isNeg = axis.endsWith("-");
+  const base = axis.replace(/[+-]$/, "");
+  const sign = isNeg ? -1 : 1;
+  const group = base[0];
+  const key = base[1];
+  if (group === "t") t[key] += value * sign;
+  else r[key] += value * sign;
 }
-function actionValuesToSpatialData(values, timestamp) {
-  return {
-    translation: {
-      x: values.tx ?? 0,
-      y: values.ty ?? 0,
-      z: values.tz ?? 0
-    },
-    rotation: {
-      x: values.rx ?? 0,
-      y: values.ry ?? 0,
-      z: values.rz ?? 0
-    },
-    timestamp
-  };
+function applyRoutes(data, routes, scale = 1) {
+  const t = { x: 0, y: 0, z: 0 };
+  const r = { x: 0, y: 0, z: 0 };
+  for (const route of routes) {
+    let value = readAxis(data, route.source);
+    if (route.flip) value = -value;
+    value *= scale;
+    writeAxis(t, r, route.target, value);
+  }
+  return { translation: t, rotation: r, timestamp: data.timestamp, deviceId: data.deviceId };
 }
 
 // packages/client/src/utils/config.ts
 var DEFAULT_CONFIG = {
-  sensitivity: { translation: 1e-3, rotation: 1e-3 },
-  flip: { tx: false, ty: false, tz: false, rx: false, ry: false, rz: false },
+  routes: DEFAULT_ROUTES,
+  scale: 1e-3,
   deadZone: 0,
   dominant: false,
-  axisRemap: { tx: "x", ty: "y", tz: "z", rx: "x", ry: "y", rz: "z" },
   lockPosition: false,
   lockRotation: false,
-  actionMap: { ...DEFAULT_ACTION_MAP },
   devices: {
-    // SpaceMouse Z-up → Three.js Y-up axis correction
-    "cnx-*": { flip: { ty: true, tz: true, ry: true, rz: true } }
+    "cnx-*": {
+      routes: [
+        { source: "tx", target: "tx" },
+        { source: "ty", target: "ty", flip: true },
+        { source: "tz", target: "tz", flip: true },
+        { source: "rx", target: "rx" },
+        { source: "ry", target: "ry", flip: true },
+        { source: "rz", target: "rz", flip: true }
+      ]
+    },
+    // PlayStation: L2 (ty) → TY, R2 (ry) → TY flipped (push-pull)
+    "hid-54c-*": {
+      routes: [
+        { source: "tx", target: "tx" },
+        { source: "tz", target: "tz" },
+        { source: "rz", target: "rz" },
+        { source: "rx", target: "rx" },
+        { source: "ty", target: "ty" },
+        { source: "ry", target: "ty", flip: true }
+      ]
+    }
   }
 };
 function mergeConfig(base, partial) {
   const merged = {
     ...base,
     ...partial,
-    sensitivity: { ...base.sensitivity, ...partial.sensitivity },
-    flip: { ...base.flip, ...partial.flip },
-    axisRemap: { ...base.axisRemap, ...partial.axisRemap },
-    actionMap: partial.actionMap ? { ...base.actionMap, ...partial.actionMap } : { ...base.actionMap },
+    routes: partial.routes ?? [...base.routes],
     devices: { ...base.devices }
   };
   if (partial.devices) {
     for (const [key, devCfg] of Object.entries(partial.devices)) {
-      merged.devices[key] = mergeDeviceConfig(merged.devices[key], devCfg);
+      merged.devices[key] = { ...merged.devices[key], ...devCfg };
     }
   }
   return merged;
-}
-function mergeDeviceConfig(base, partial) {
-  if (!base) return partial;
-  return {
-    ...base,
-    ...partial,
-    sensitivity: partial.sensitivity ? { ...base.sensitivity, ...partial.sensitivity } : base.sensitivity,
-    flip: partial.flip ? { ...base.flip, ...partial.flip } : base.flip,
-    axisRemap: partial.axisRemap ? { ...base.axisRemap, ...partial.axisRemap } : base.axisRemap
-  };
 }
 function resolveDeviceConfig(config, deviceId) {
   let deviceOverride;
@@ -514,14 +524,10 @@ function resolveDeviceConfig(config, deviceId) {
   if (!deviceOverride) return config;
   return {
     ...config,
-    sensitivity: { ...config.sensitivity, ...deviceOverride.sensitivity },
-    flip: { ...config.flip, ...deviceOverride.flip },
+    routes: deviceOverride.routes ?? config.routes,
+    scale: deviceOverride.scale ?? config.scale,
     deadZone: deviceOverride.deadZone ?? config.deadZone,
-    dominant: deviceOverride.dominant ?? config.dominant,
-    axisRemap: { ...config.axisRemap, ...deviceOverride.axisRemap },
-    actionMap: deviceOverride.actionMap ? { ...config.actionMap, ...deviceOverride.actionMap } : config.actionMap,
-    lockPosition: deviceOverride.lockPosition ?? config.lockPosition,
-    lockRotation: deviceOverride.lockRotation ?? config.lockRotation
+    dominant: deviceOverride.dominant ?? config.dominant
   };
 }
 
@@ -540,6 +546,11 @@ function saveSettings(config, storage) {
   if (!s) return;
   s.setItem(STORAGE_KEY, JSON.stringify(config));
 }
+function clearSettings(storage) {
+  const s = getStorage(storage);
+  if (!s) return;
+  s.setItem(STORAGE_KEY, "{}");
+}
 function loadSettings(storage) {
   const s = getStorage(storage);
   if (!s) return null;
@@ -552,89 +563,11 @@ function loadSettings(storage) {
   }
 }
 
-// packages/client/src/utils/transforms.ts
-function applyFlip(data, flip) {
-  return {
-    ...data,
-    translation: {
-      x: flip.tx ? -data.translation.x : data.translation.x,
-      y: flip.ty ? -data.translation.y : data.translation.y,
-      z: flip.tz ? -data.translation.z : data.translation.z
-    },
-    rotation: {
-      x: flip.rx ? -data.rotation.x : data.rotation.x,
-      y: flip.ry ? -data.rotation.y : data.rotation.y,
-      z: flip.rz ? -data.rotation.z : data.rotation.z
-    }
-  };
-}
-function applySensitivity(data, sens) {
-  return {
-    ...data,
-    translation: {
-      x: data.translation.x * sens.translation,
-      y: data.translation.y * sens.translation,
-      z: data.translation.z * sens.translation
-    },
-    rotation: {
-      x: data.rotation.x * sens.rotation,
-      y: data.rotation.y * sens.rotation,
-      z: data.rotation.z * sens.rotation
-    }
-  };
-}
-function applyDominant(data) {
-  const axes = [
-    { group: "t", key: "x", v: Math.abs(data.translation.x) },
-    { group: "t", key: "y", v: Math.abs(data.translation.y) },
-    { group: "t", key: "z", v: Math.abs(data.translation.z) },
-    { group: "r", key: "x", v: Math.abs(data.rotation.x) },
-    { group: "r", key: "y", v: Math.abs(data.rotation.y) },
-    { group: "r", key: "z", v: Math.abs(data.rotation.z) }
-  ];
-  const max = axes.reduce((a, b) => b.v > a.v ? b : a);
-  const t = { x: 0, y: 0, z: 0 };
-  const r = { x: 0, y: 0, z: 0 };
-  if (max.group === "t") t[max.key] = data.translation[max.key];
-  else r[max.key] = data.rotation[max.key];
-  return { ...data, translation: t, rotation: r };
-}
-function applyDeadZone(data, threshold) {
-  const dz = (v) => Math.abs(v) < threshold ? 0 : v;
-  return {
-    ...data,
-    translation: { x: dz(data.translation.x), y: dz(data.translation.y), z: dz(data.translation.z) },
-    rotation: { x: dz(data.rotation.x), y: dz(data.rotation.y), z: dz(data.rotation.z) }
-  };
-}
-function applyAxisRemap(data, map) {
-  return {
-    ...data,
-    translation: {
-      x: 0,
-      y: 0,
-      z: 0,
-      [map.tx]: data.translation.x,
-      [map.ty]: data.translation.y,
-      [map.tz]: data.translation.z
-    },
-    rotation: {
-      x: 0,
-      y: 0,
-      z: 0,
-      [map.rx]: data.rotation.x,
-      [map.ry]: data.rotation.y,
-      [map.rz]: data.rotation.z
-    }
-  };
-}
-
 // packages/client/src/utils/input-manager.ts
 var InputManager = class extends TypedEmitter {
   connections = [];
   storage;
   knownDevices = /* @__PURE__ */ new Map();
-  // Per-device accumulators: latest value from each device per frame tick
   deviceAccumulators = /* @__PURE__ */ new Map();
   accDirty = false;
   flushTimer = null;
@@ -649,22 +582,18 @@ var InputManager = class extends TypedEmitter {
     this._config = mergeConfig(DEFAULT_CONFIG, { ...config, ...persisted });
     this.flushTimer = setInterval(() => this.flushAccumulator(), 16);
   }
-  /** Add a connection to the managed set */
   addConnection(connection2) {
     this.connections.push(connection2);
     this.wireConnection(connection2);
   }
-  /** Remove a connection */
   removeConnection(connection2) {
     const idx = this.connections.indexOf(connection2);
     if (idx !== -1) this.connections.splice(idx, 1);
     connection2.removeAllListeners();
   }
-  /** Connect all managed connections */
   async connect() {
     await Promise.all(this.connections.map((c) => c.connect()));
   }
-  /** Disconnect all managed connections */
   disconnect() {
     for (const c of this.connections) c.disconnect();
     if (this.flushTimer) {
@@ -672,41 +601,32 @@ var InputManager = class extends TypedEmitter {
       this.flushTimer = null;
     }
   }
-  /** Fetch device info from all connections */
   async fetchDeviceInfo() {
     const results = await Promise.all(this.connections.map((c) => c.fetchDeviceInfo()));
     const devices = results.flat();
     for (const d of devices) this.knownDevices.set(d.id, d);
     return devices;
   }
-  /** Get all known connected devices paired with their resolved config */
   getDevicesWithConfig() {
     return Array.from(this.knownDevices.values()).map((device) => ({
       device,
       config: this.getDeviceConfig(device.id)
     }));
   }
-  /** Get the resolved per-device config (global defaults + device overrides) */
   getDeviceConfig(deviceId) {
     const resolved = resolveDeviceConfig(this._config, deviceId);
     return {
-      sensitivity: resolved.sensitivity,
-      flip: resolved.flip,
+      routes: resolved.routes,
+      scale: resolved.scale,
       deadZone: resolved.deadZone,
-      dominant: resolved.dominant,
-      axisRemap: resolved.axisRemap,
-      actionMap: resolved.actionMap,
-      lockPosition: resolved.lockPosition,
-      lockRotation: resolved.lockRotation
+      dominant: resolved.dominant
     };
   }
-  /** Update global configuration. Persists by default. */
   updateConfig(partial, persist = true) {
     this._config = mergeConfig(this._config, partial);
     if (persist) saveSettings(this._config, this.storage);
     this.emit("configChange", this._config);
   }
-  /** Update configuration for a specific device. Persists by default. */
   updateDeviceConfig(deviceId, partial, persist = true) {
     const existing = this._config.devices[deviceId] ?? {};
     this._config = mergeConfig(this._config, {
@@ -715,20 +635,24 @@ var InputManager = class extends TypedEmitter {
     if (persist) saveSettings(this._config, this.storage);
     this.emit("configChange", this._config);
   }
-  /** Register a callback for processed spatial data. Returns unsubscribe function. */
+  resetDeviceConfig(deviceId, persist = true) {
+    const { [deviceId]: _, ...rest } = this._config.devices;
+    this._config = { ...this._config, devices: rest };
+    if (persist) saveSettings(this._config, this.storage);
+    this.emit("configChange", this._config);
+  }
+  resetAllConfig() {
+    clearSettings(this.storage);
+    this._config = { ...DEFAULT_CONFIG };
+    this.emit("configChange", this._config);
+  }
   onSpatialData(callback) {
     this.on("spatialData", callback);
     return () => this.off("spatialData", callback);
   }
-  /** Register a callback for button events. Returns unsubscribe function. */
   onButtonEvent(callback) {
     this.on("buttonEvent", callback);
     return () => this.off("buttonEvent", callback);
-  }
-  /** Register a callback for action values. Returns unsubscribe function. */
-  onActionValues(callback) {
-    this.on("actionValues", callback);
-    return () => this.off("actionValues", callback);
   }
   wireConnection(connection2) {
     connection2.on("spatialData", (raw) => {
@@ -766,38 +690,63 @@ var InputManager = class extends TypedEmitter {
     }
     this.deviceAccumulators.clear();
     this.accDirty = false;
-    const data = {
+    let data = {
       translation: { x: merged.tx, y: merged.ty, z: merged.tz },
       rotation: { x: merged.rx, y: merged.ry, z: merged.rz },
       timestamp: performance.now() * 1e3
     };
-    const { spatial, actions } = this.applyGlobalTransforms(data);
-    if (spatial) this.emit("spatialData", spatial);
-    if (actions) this.emit("actionValues", actions);
+    if (this._config.lockPosition) {
+      data = { ...data, translation: { x: 0, y: 0, z: 0 } };
+    }
+    if (this._config.lockRotation) {
+      data = { ...data, rotation: { x: 0, y: 0, z: 0 } };
+    }
+    this.emit("spatialData", data);
   }
-  /** Per-device transforms: flip, sensitivity, dead zone, dominant, axis remap */
+  /** Per-device: deadZone → dominant → routes (flip + scale + remap in one pass) */
   processPerDevice(raw, deviceId) {
     const cfg = resolveDeviceConfig(this._config, deviceId);
     let data = raw;
-    if (cfg.deadZone > 0) data = applyDeadZone(data, cfg.deadZone);
-    if (cfg.dominant) data = applyDominant(data);
-    data = applyFlip(data, cfg.flip);
-    data = applyAxisRemap(data, cfg.axisRemap);
-    data = applySensitivity(data, cfg.sensitivity);
+    if (cfg.deadZone > 0) {
+      const dz = (v) => Math.abs(v) < cfg.deadZone ? 0 : v;
+      data = {
+        ...data,
+        translation: { x: dz(data.translation.x), y: dz(data.translation.y), z: dz(data.translation.z) },
+        rotation: { x: dz(data.rotation.x), y: dz(data.rotation.y), z: dz(data.rotation.z) }
+      };
+    }
+    if (cfg.dominant) {
+      const axes = [
+        { g: "t", k: "x", v: Math.abs(data.translation.x) },
+        { g: "t", k: "y", v: Math.abs(data.translation.y) },
+        { g: "t", k: "z", v: Math.abs(data.translation.z) },
+        { g: "r", k: "x", v: Math.abs(data.rotation.x) },
+        { g: "r", k: "y", v: Math.abs(data.rotation.y) },
+        { g: "r", k: "z", v: Math.abs(data.rotation.z) }
+      ];
+      const max = axes.reduce((a, b) => b.v > a.v ? b : a);
+      const t = { x: 0, y: 0, z: 0 };
+      const r = { x: 0, y: 0, z: 0 };
+      if (max.g === "t") t[max.k] = data.translation[max.k];
+      else r[max.k] = data.rotation[max.k];
+      data = { ...data, translation: t, rotation: r };
+    }
+    const device = this.knownDevices.get(deviceId);
+    const deviceRoutes = this.resolveRoutes(deviceId, device);
+    data = applyRoutes(data, deviceRoutes, cfg.scale);
     return data;
   }
-  /** Global transforms applied after per-device merge: locks + action map */
-  applyGlobalTransforms(data) {
-    const cfg = this._config;
-    if (cfg.lockPosition) {
-      data = { ...data, translation: { x: 0, y: 0, z: 0 } };
+  /** Get the effective routes for a device: device config override > device axes metadata > global default */
+  resolveRoutes(deviceId, device) {
+    const devCfg = this._config.devices[deviceId];
+    if (devCfg?.routes && Array.isArray(devCfg.routes)) return devCfg.routes;
+    for (const [pattern, cfg] of Object.entries(this._config.devices)) {
+      if (pattern.endsWith("*") && deviceId.startsWith(pattern.slice(0, -1))) {
+        if (cfg.routes && Array.isArray(cfg.routes)) return cfg.routes;
+      }
     }
-    if (cfg.lockRotation) {
-      data = { ...data, rotation: { x: 0, y: 0, z: 0 } };
-    }
-    const actions = applyActionMap(data, cfg.actionMap);
-    const spatial = actionValuesToSpatialData(actions, data.timestamp);
-    return { spatial, actions };
+    if (device?.axes) return buildRoutes(device.axes);
+    return DEFAULT_ROUTES;
   }
 };
 
@@ -890,7 +839,6 @@ var SatMouseStatus = class extends HTMLElement {
 customElements.define("satmouse-status", SatMouseStatus);
 
 // packages/client/src/elements/satmouse-devices.ts
-var AXES = ["tx", "ty", "tz", "rx", "ry", "rz"];
 var STYLES = `
 <style>
   :host { display: block; font-family: inherit; font-size: 12px; }
@@ -902,16 +850,16 @@ var STYLES = `
   .slider-row label { color: #7f8c8d; font-weight: 600; width: 38px; flex-shrink: 0; }
   .slider-row input[type="range"] { flex: 1; min-width: 0; height: 4px; accent-color: #3498db; }
   .slider-row span { color: #7f8c8d; font-family: monospace; font-size: 10px; min-width: 44px; text-align: right; }
-  .flip-group { display: flex; flex-direction: column; gap: 4px; }
-  .flip-row { display: flex; gap: 8px; }
-  .flip-row label { display: flex; align-items: center; gap: 2px; color: #7f8c8d; min-width: 36px; }
-  .flip-row input { accent-color: #e74c3c; }
-  .remap-group { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; }
-  .remap-row { display: flex; gap: 4px; align-items: center; }
-  .remap-row label { color: #7f8c8d; width: 24px; flex-shrink: 0; }
-  .remap-row select { background: #16213e; color: #e0e0e0; border: 1px solid #1a4a8a; border-radius: 3px;
-                       font-size: 11px; padding: 1px 4px; flex: 1; min-width: 0; }
+  .route-group { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .route-row { display: flex; gap: 4px; align-items: center; }
+  .route-row label { color: #7f8c8d; white-space: nowrap; }
+  .route-row select { background: #16213e; color: #e0e0e0; border: 1px solid #1a4a8a; border-radius: 3px;
+                      font-size: 11px; padding: 1px 4px; }
+  .route-row input[type="checkbox"] { accent-color: #e74c3c; margin: 0; }
   .empty { color: #7f8c8d; font-style: italic; }
+  .reset-btn { background: none; border: 1px solid #1a4a8a; border-radius: 3px; color: #7f8c8d;
+               font-size: 11px; padding: 3px 8px; cursor: pointer; margin-top: 4px; }
+  .reset-btn:hover { color: #e0e0e0; border-color: #e74c3c; }
 </style>
 `;
 function mapSlider(v) {
@@ -944,11 +892,13 @@ var SatMouseDevices = class extends HTMLElement {
     });
   }
   addDevice(device) {
-    if (this.shadowRoot.getElementById(`dev-${device.id}`)) return;
+    const existing = this.shadowRoot.getElementById(`dev-${device.id}`);
+    if (existing) {
+      this.refreshControls(existing, device);
+      return;
+    }
     const empty = this.container.querySelector(".empty");
     if (empty) empty.remove();
-    const mgr = this.manager;
-    const cfg = mgr.getDeviceConfig(device.id);
     const panel = document.createElement("details");
     panel.className = "panel";
     panel.id = `dev-${device.id}`;
@@ -956,72 +906,88 @@ var SatMouseDevices = class extends HTMLElement {
     const summary = document.createElement("summary");
     summary.innerHTML = `${device.model ?? device.name}<span class="type">${device.connectionType ?? ""}</span>`;
     panel.appendChild(summary);
+    this.refreshControls(panel, device);
+    this.container.appendChild(panel);
+  }
+  refreshControls(panel, device) {
+    const old = panel.querySelector(".controls");
+    if (old) old.remove();
+    const mgr = this.manager;
+    const cfg = mgr.getDeviceConfig(device.id);
     const controls = document.createElement("div");
     controls.className = "controls";
-    for (const type of ["translation", "rotation"]) {
+    const routeGroup = document.createElement("div");
+    routeGroup.className = "route-group";
+    const deviceAxes = device.axes ?? ["tx", "ty", "tz", "rx", "ry", "rz"];
+    const routes = this.getRoutes(device.id, deviceAxes);
+    for (let i = 0; i < deviceAxes.length; i++) {
+      const route = routes[i] ?? { source: deviceAxes[i], target: deviceAxes[i].replace(/[+-]$/, "") };
       const row = document.createElement("div");
-      row.className = "slider-row";
-      const val = cfg.sensitivity?.[type] ?? mgr.config.sensitivity[type];
-      row.innerHTML = `<label>${type === "translation" ? "Trans" : "Rot"}</label><input type="range" min="0" max="100" value="${Math.round(unmapSlider(val))}"><span>${val.toFixed(4)}</span>`;
-      const slider = row.querySelector("input");
-      const span = row.querySelector("span");
-      slider.addEventListener("input", () => {
-        const v = mapSlider(+slider.value);
-        span.textContent = v.toFixed(4);
-        mgr.updateDeviceConfig(device.id, {
-          sensitivity: { ...mgr.getDeviceConfig(device.id).sensitivity, [type]: v }
-        });
+      row.className = "route-row";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = route.flip ?? false;
+      cb.title = "Flip";
+      const routeIndex = i;
+      cb.addEventListener("change", () => {
+        this.updateRoute(device.id, routeIndex, deviceAxes, { flip: cb.checked });
       });
-      controls.appendChild(row);
-    }
-    const flipGroup = document.createElement("div");
-    flipGroup.className = "flip-group";
-    for (const group of [["tx", "ty", "tz"], ["rx", "ry", "rz"]]) {
-      const row = document.createElement("div");
-      row.className = "flip-row";
-      for (const axis of group) {
-        const label = document.createElement("label");
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = cfg.flip?.[axis] ?? mgr.config.flip[axis];
-        cb.addEventListener("change", () => {
-          mgr.updateDeviceConfig(device.id, {
-            flip: { ...mgr.getDeviceConfig(device.id).flip, [axis]: cb.checked }
-          });
-        });
-        label.appendChild(cb);
-        label.appendChild(document.createTextNode(axis.toUpperCase()));
-        row.appendChild(label);
-      }
-      flipGroup.appendChild(row);
-    }
-    controls.appendChild(flipGroup);
-    const remapGroup = document.createElement("div");
-    remapGroup.className = "remap-group";
-    const actionMap = cfg.actionMap ?? mgr.config.actionMap;
-    for (const action of AXES) {
-      const row = document.createElement("div");
-      row.className = "remap-row";
-      row.innerHTML = `<label>${action.toUpperCase()}</label>`;
+      row.appendChild(cb);
+      const label = document.createElement("label");
+      label.textContent = device.axisLabels?.[i] ?? deviceAxes[i].toUpperCase();
+      row.appendChild(label);
       const sel = document.createElement("select");
-      for (const src of AXES) {
+      for (const target of FULL_AXES) {
         const opt = document.createElement("option");
-        opt.value = src;
-        opt.textContent = src.toUpperCase();
-        if (actionMap[action]?.source === src) opt.selected = true;
+        opt.value = target;
+        opt.textContent = target.toUpperCase();
+        if (target === route.target) opt.selected = true;
         sel.appendChild(opt);
       }
       sel.addEventListener("change", () => {
-        const current = mgr.getDeviceConfig(device.id).actionMap ?? { ...DEFAULT_ACTION_MAP };
-        current[action] = { ...current[action], source: sel.value };
-        mgr.updateDeviceConfig(device.id, { actionMap: current });
+        this.updateRoute(device.id, routeIndex, deviceAxes, { target: sel.value });
       });
       row.appendChild(sel);
-      remapGroup.appendChild(row);
+      routeGroup.appendChild(row);
     }
-    controls.appendChild(remapGroup);
+    controls.appendChild(routeGroup);
+    const sensRow = document.createElement("div");
+    sensRow.className = "slider-row";
+    const currentScale = cfg.scale ?? mgr.config.scale;
+    sensRow.innerHTML = `<label>Scale</label><input type="range" min="0" max="100" value="${Math.round(unmapSlider(currentScale))}"><span>${currentScale.toFixed(4)}</span>`;
+    const slider = sensRow.querySelector("input");
+    const span = sensRow.querySelector("span");
+    slider.addEventListener("input", () => {
+      const v = mapSlider(+slider.value);
+      span.textContent = v.toFixed(4);
+      mgr.updateDeviceConfig(device.id, { scale: v });
+    });
+    controls.appendChild(sensRow);
+    const resetBtn = document.createElement("button");
+    resetBtn.className = "reset-btn";
+    resetBtn.textContent = "Restore Defaults";
+    resetBtn.addEventListener("click", () => {
+      mgr.resetDeviceConfig(device.id);
+      this.refreshControls(panel, device);
+    });
+    controls.appendChild(resetBtn);
     panel.appendChild(controls);
-    this.container.appendChild(panel);
+  }
+  getRoutes(deviceId, deviceAxes) {
+    const mgr = this.manager;
+    const devCfg = mgr.config.devices[deviceId];
+    if (devCfg?.routes && Array.isArray(devCfg.routes)) return devCfg.routes;
+    for (const [pattern, cfg] of Object.entries(mgr.config.devices)) {
+      if (pattern.endsWith("*") && deviceId.startsWith(pattern.slice(0, -1))) {
+        if (cfg.routes && Array.isArray(cfg.routes)) return cfg.routes;
+      }
+    }
+    return buildRoutes(deviceAxes);
+  }
+  updateRoute(deviceId, index, deviceAxes, patch) {
+    const base = this.getRoutes(deviceId, deviceAxes);
+    const updated = base.map((r, j) => j === index ? { ...r, ...patch } : { ...r });
+    this.manager.updateDeviceConfig(deviceId, { routes: updated });
   }
   removeDevice(device) {
     this.shadowRoot.getElementById(`dev-${device.id}`)?.remove();
@@ -1191,7 +1157,10 @@ var btnLockPos = document.getElementById("btn-lock-pos");
 var btnLockRot = document.getElementById("btn-lock-rot");
 var btnLockOrbit = document.getElementById("btn-lock-orbit");
 var btnDominant = document.getElementById("btn-dominant");
-btnReset.addEventListener("click", reset);
+btnReset.addEventListener("click", () => {
+  reset();
+  manager.resetAllConfig();
+});
 function toggleButton(btn, key) {
   btn.addEventListener("click", () => {
     btn.classList.toggle("active");

@@ -1,5 +1,6 @@
 export interface TrayActions {
   onOpenClient: () => void;
+  onRescanDevices: () => void;
   onQuit: () => void;
 }
 

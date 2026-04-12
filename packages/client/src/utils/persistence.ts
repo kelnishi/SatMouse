@@ -22,6 +22,12 @@ export function saveSettings(config: InputConfig, storage?: StorageAdapter): voi
   s.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
+export function clearSettings(storage?: StorageAdapter): void {
+  const s = getStorage(storage);
+  if (!s) return;
+  s.setItem(STORAGE_KEY, "{}");
+}
+
 export function loadSettings(storage?: StorageAdapter): Partial<InputConfig> | null {
   const s = getStorage(storage);
   if (!s) return null;

@@ -43,7 +43,10 @@ const btnLockRot = document.getElementById("btn-lock-rot")!;
 const btnLockOrbit = document.getElementById("btn-lock-orbit")!;
 const btnDominant = document.getElementById("btn-dominant")!;
 
-btnReset.addEventListener("click", reset);
+btnReset.addEventListener("click", () => {
+  reset();
+  manager.resetAllConfig();
+});
 
 function toggleButton(btn: HTMLElement, key: keyof InputConfig) {
   btn.addEventListener("click", () => {

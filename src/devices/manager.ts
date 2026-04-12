@@ -61,14 +61,53 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     this.activePlugins.clear();
   }
 
-  /** Stop all plugins and reconnect — picks up newly connected devices */
+  /** Re-enumerate devices that support rescan (e.g. HID) without
+   *  touching plugins that manage their own hotplug (e.g. 3Dconnexion). */
   async rescan(enabledIds?: string[]): Promise<void> {
-    this.stop();
-    // Re-wire and reconnect all plugins
-    for (const [id, plugin] of this.plugins) {
+    // Snapshot IDs to avoid mutating the set while iterating
+    const toRescan = [...this.activePlugins].filter((id) => {
+      const plugin = this.plugins.get(id);
+      if (!plugin || !plugin.supportsRescan) return false;
+      if (enabledIds?.length && !enabledIds.includes(id)) return false;
+      return true;
+    });
+
+    for (const id of toRescan) {
+      const plugin = this.plugins.get(id)!;
+      plugin.disconnect();
+      plugin.removeAllListeners();
+      this.activePlugins.delete(id);
+      console.log(`[DeviceManager] Rescanning "${plugin.name}"...`);
+
       this.wirePlugin(plugin);
+      try {
+        await plugin.connect();
+        this.activePlugins.add(id);
+        console.log(`[DeviceManager] Reconnected "${plugin.name}"`);
+      } catch (err) {
+        console.error(`[DeviceManager] Failed to reconnect "${plugin.name}":`, err);
+      }
     }
-    await this.start(enabledIds);
+
+    // Also try to start plugins that weren't active (newly available)
+    for (const [id, plugin] of this.plugins) {
+      if (this.activePlugins.has(id)) continue;
+      if (!plugin.supportsRescan) continue;
+      if (enabledIds?.length && !enabledIds.includes(id)) continue;
+      if (!plugin.supportedPlatforms.includes(process.platform)) continue;
+
+      const available = await plugin.isAvailable();
+      if (!available) continue;
+
+      this.wirePlugin(plugin);
+      try {
+        await plugin.connect();
+        this.activePlugins.add(id);
+        console.log(`[DeviceManager] Connected "${plugin.name}" (new)`);
+      } catch (err) {
+        console.error(`[DeviceManager] Failed to connect "${plugin.name}":`, err);
+      }
+    }
   }
 
   getConnectedDevices(): DeviceInfo[] {

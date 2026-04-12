@@ -56,6 +56,7 @@ function main() {
 
   // Create action handler class
   const ActionProto = koffi.proto("void TrayAction(void *self, void *_cmd, void *sender)");
+  const URLHandlerProto = koffi.proto("void URLHandler(void *self, void *_cmd, void *event, void *reply)");
 
   const NSObject = cls("NSObject");
   const TargetClass = objc_allocateClassPair(NSObject, "SatMouseTrayTarget", 0);
@@ -75,12 +76,28 @@ function main() {
     process.exit(0);
   }, koffi.pointer(ActionProto));
 
+  const handleURLCb = koffi.register(() => {
+    // satmouse://launch just needs the app running — which it already is.
+    // If the app was not running, macOS launched it to handle the URL.
+    console.log("[Tray] URL scheme invoked");
+  }, koffi.pointer(URLHandlerProto));
+
   class_addMethod(TargetClass, sel("openClient:"), openClientCb, "v@:@");
   class_addMethod(TargetClass, sel("rescanDevices:"), rescanCb, "v@:@");
   class_addMethod(TargetClass, sel("quitApp:"), quitCb, "v@:@");
+  class_addMethod(TargetClass, sel("handleURL:withReply:"), handleURLCb, "v@:@@");
   objc_registerClassPair(TargetClass);
 
   const target = msg(msg(TargetClass, sel("alloc")), sel("init"));
+
+  // Register for kAEGetURL Apple Events (satmouse:// URL scheme)
+  const eventManager = msg(cls("NSAppleEventManager"), sel("sharedAppleEventManager"));
+  // kInternetEventClass = 'GURL', kAEGetURL = 'GURL'
+  const msg_ppll = objc.func("void objc_msgSend(void *self, void *sel, void *a, void *b, long c, long d)");
+  msg_ppll(eventManager, sel("setEventHandler:andSelector:forEventClass:andEventID:"),
+    target, sel("handleURL:withReply:"),
+    0x4755524C,  // 'GURL' = kInternetEventClass
+    0x4755524C); // 'GURL' = kAEGetURL
 
   // Create menu
   const NSMenu = cls("NSMenu");
@@ -137,7 +154,7 @@ function main() {
   });
 
   // Keep refs to prevent GC
-  const _refs = [openClientCb, quitCb, item, target, menu, bar];
+  const _refs = [openClientCb, rescanCb, handleURLCb, quitCb, item, target, menu, bar];
 }
 
 function openBrowser(url: string): void {

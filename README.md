@@ -74,7 +74,7 @@ function Scene() {
 
 ### Try the reference client
 
-With the bridge running, open http://localhost:4444/client/ — a Three.js demo with a 6DOF-controlled cube.
+With the bridge running, open http://localhost:18945/client/ — a Three.js demo with a 6DOF-controlled cube.
 
 ## How It Works
 
@@ -191,7 +191,7 @@ deviceManager.registerPlugin(hid);
 | Client | Type | Integration | Status |
 |---|---|---|---|
 | [Kelcite](https://kelcite.app) | 3D modeling web app | `@kelnishi/satmouse-client/react` | Integrated |
-| [Reference Client](http://localhost:4444/client/) | Three.js demo | Built into SatMouse | Included |
+| [Reference Client](http://localhost:18945/client/) | Three.js demo | Built into SatMouse | Included |
 
 ### Listing your app
 
@@ -207,7 +207,7 @@ If your app integrates SatMouse, submit a PR adding a row to the table above. In
 | Module | Import | Purpose |
 |---|---|---|
 | **core** | `@kelnishi/satmouse-client` | `SatMouseConnection`, discovery (`fetchThingDescription`, `resolveEndpoints`), binary decode, `launchSatMouse()`. Zero dependencies. |
-| **utils** | `@kelnishi/satmouse-client/utils` | `InputManager` — unified device service with transform pipeline (flip, sensitivity, dominant, dead zone, axis remap, action map), per-device config, multi-device merge, settings persistence. |
+| **utils** | `@kelnishi/satmouse-client/utils` | `InputManager` — unified device service with per-device axis routing (flip, scale, remap), dead zone, dominant mode, multi-device merge, settings persistence. |
 | **react** | `@kelnishi/satmouse-client/react` | `<SatMouseProvider>`, `useSpatialData()`, `useRawSpatialData()`, `useButtonEvent()`, `<ConnectionStatus>`, `<SettingsPanel>`, `<DeviceInfo>`, `<DebugPanel>` |
 | **elements** | `@kelnishi/satmouse-client/elements` | Web Components: `<satmouse-status>`, `<satmouse-devices>`, `<satmouse-debug>`. Shadow DOM, works in any framework. |
 
@@ -237,24 +237,31 @@ await connection.connect();
 import { InputManager } from "@kelnishi/satmouse-client/utils";
 
 const manager = new InputManager({
-  sensitivity: { translation: 1.0, rotation: 1.0 },
-  flip: { tx: false, ty: true, tz: true, rx: false, ry: true, rz: true },
-  deadZone: 0.02,
+  scale: 0.001,
+  deadZone: 0,
   dominant: false,
   lockPosition: false,
   lockRotation: false,
   devices: {
-    "cnx-*": { flip: { ty: true, tz: true, ry: true, rz: true } },
+    "cnx-*": {
+      routes: [
+        { source: "tx", target: "tx" },
+        { source: "ty", target: "ty", flip: true },
+        { source: "tz", target: "tz", flip: true },
+        { source: "rx", target: "rx" },
+        { source: "ry", target: "ry", flip: true },
+        { source: "rz", target: "rz", flip: true },
+      ],
+    },
   },
 });
 
 manager.addConnection(connection);
 manager.onSpatialData((data) => { /* processed, merged, transformed */ });
 manager.onButtonEvent((event) => { /* button press/release */ });
-manager.onActionValues((values) => { /* named action values from actionMap */ });
 
 // Per-device config at runtime
-manager.updateDeviceConfig("cnx-c635", { sensitivity: { translation: 0.5 } });
+manager.updateDeviceConfig("cnx-c635", { scale: 0.0005 });
 ```
 
 #### Web Components
@@ -299,11 +306,11 @@ npm run build:client
 
 | Endpoint | Protocol | Purpose |
 |---|---|---|
-| `http://localhost:4444/td.json` | HTTP | WoT Thing Description |
-| `http://localhost:4444/client/` | HTTP | Reference web client |
-| `ws://localhost:4444/spatial` | WebSocket | Spatial data stream (fallback) |
-| `https://localhost:4443` | WebTransport | Spatial data stream (primary) |
-| `http://localhost:4444/api/device` | HTTP | Connected device info |
+| `http://localhost:18945/td.json` | HTTP | WoT Thing Description |
+| `http://localhost:18945/client/` | HTTP | Reference web client |
+| `ws://localhost:18945/spatial` | WebSocket | Spatial data stream (fallback) |
+| `https://localhost:18946` | WebTransport | Spatial data stream (primary) |
+| `http://localhost:18945/api/device` | HTTP | Connected device info |
 
 ## Specifications
 

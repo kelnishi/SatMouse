@@ -25,6 +25,12 @@ export interface DeviceInfo {
   vendorId: number;
   productId: number;
   connectionType: "usb" | "wireless" | "bluetooth" | "unknown";
+  /** Axes this device provides (e.g., ["tx","ty","tz","rx","ry","rz"] or ["tx","ty","rx","ry","tz+","rz+"]) */
+  axes?: string[];
+  /** Human-readable labels for axes (same order as axes array) */
+  axisLabels?: string[];
+  /** Number of buttons this device provides */
+  buttonCount?: number;
 }
 
 /** Events emitted by a DevicePlugin */
@@ -47,6 +53,10 @@ export abstract class DevicePlugin extends EventEmitter<DevicePluginEvents> {
   abstract readonly id: string;
   abstract readonly name: string;
   abstract readonly supportedPlatforms: NodeJS.Platform[];
+
+  /** Whether this plugin supports disconnect+reconnect for device re-enumeration.
+   *  Plugins backed by singleton drivers (e.g. 3Dconnexion) should leave this false. */
+  readonly supportsRescan: boolean = false;
 
   /** Probe whether the hardware SDK/library is available on this machine */
   abstract isAvailable(): Promise<boolean>;
