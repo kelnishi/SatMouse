@@ -251,8 +251,8 @@ var WebSocketAdapter = class {
 function parseSatMouseUri(uri) {
   const url = new URL(uri);
   const host = url.searchParams.get("host") ?? "localhost";
-  const wsPort = url.searchParams.get("wsPort") ?? "18944";
-  const wtPort = url.searchParams.get("wtPort") ?? "18943";
+  const wsPort = url.searchParams.get("wsPort") ?? "18945";
+  const wtPort = url.searchParams.get("wtPort") ?? "18946";
   return {
     tdUrl: `http://${host}:${wsPort}/td.json`,
     wsUrl: `ws://${host}:${wsPort}/spatial`,
@@ -295,7 +295,7 @@ var SatMouseConnection = class extends TypedEmitter {
       this.options.tdUrl = this.options.tdUrl ?? parsed.tdUrl;
     }
     if (!wtUrl && !wsUrl) {
-      const tdUrl = this.options.tdUrl ?? new URL("/td.json", globalThis.location?.origin ?? "http://localhost:18944").href;
+      const tdUrl = this.options.tdUrl ?? new URL("/td.json", globalThis.location?.origin ?? "http://localhost:18945").href;
       try {
         const td = await fetchThingDescription(tdUrl);
         const endpoints = resolveEndpoints(td);
@@ -305,7 +305,7 @@ var SatMouseConnection = class extends TypedEmitter {
         this.deviceInfoUrl = endpoints.deviceInfoUrl ?? null;
       } catch (err) {
         this.emit("error", err instanceof Error ? err : new Error(String(err)));
-        wsUrl = `ws://${globalThis.location?.hostname ?? "localhost"}:${globalThis.location?.port ?? "18944"}/spatial`;
+        wsUrl = `ws://${globalThis.location?.hostname ?? "localhost"}:${globalThis.location?.port ?? "18945"}/spatial`;
       }
     }
     for (const proto of this.options.transports) {

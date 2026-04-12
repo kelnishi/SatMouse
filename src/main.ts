@@ -76,6 +76,7 @@ async function main(): Promise<void> {
   mdns.start();
 
   console.log("\n──────────────────────────────────────────");
+  console.log(`Legacy (compat):   ws://127.0.0.1:18944`);
   console.log(`Thing Description: http://localhost:${config.wsPort}/td.json`);
   console.log(`Reference client:  ${clientUrl}`);
   console.log(`WebSocket:         ws://localhost:${config.wsPort}/spatial`);

@@ -52,8 +52,8 @@ export class TransportManager {
     // Start WebSocket (attaches to httpServer)
     this.ws.start(httpServer);
 
-    // Start legacy compatibility server on same httpServer, path /legacy
-    this.legacy.start(httpServer);
+    // Start legacy compatibility server on its own port (18944)
+    this.legacy.start();
 
     // Start WebTransport (requires TLS certs)
     try {
