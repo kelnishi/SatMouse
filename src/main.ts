@@ -12,6 +12,7 @@ import { createTray } from "./tray/index.js";
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolveResource } from "./resources.js";
+import { ensureNSApp } from "./nsapp.js";
 
 function getVersion(): string {
   try {
@@ -26,10 +27,13 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const version = getVersion();
 
+  // Bootstrap NSApplication before anything else on macOS
+  ensureNSApp();
+
   console.log(`SatMouse v${version} — 6DOF Spatial Input Bridge`);
   console.log("──────────────────────────────────────────");
 
-  // 1. Initialize system tray FIRST — bootstraps NSApplication on macOS,
+  // 1. Initialize system tray
   //    which the 3Dconnexion framework requires for event delivery.
   const clientUrl = `http://localhost:${config.wsPort}/client/`;
   const shutdown = () => {
