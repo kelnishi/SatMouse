@@ -2,28 +2,43 @@ import { resolve, dirname, join, normalize } from "node:path";
 import { existsSync, realpathSync } from "node:fs";
 
 /**
+ * Find the Resources directory in the .app bundle.
+ * Works regardless of whether node runs from MacOS/ or Resources/bin/.
+ */
+function findResourcesDir(): string | null {
+  const execDir = dirname(process.execPath);
+
+  // MacOS/node → Contents/Resources
+  const fromMacOS = resolve(execDir, "..", "Resources");
+  if (existsSync(fromMacOS)) return fromMacOS;
+
+  // Resources/bin/node → Contents/Resources (one level up from bin/)
+  const fromBin = resolve(execDir, "..");
+  const specsCheck = join(fromBin, "main.cjs");
+  if (existsSync(specsCheck)) return fromBin;
+
+  return null;
+}
+
+const resourcesDir = findResourcesDir();
+
+/**
  * Resolve a resource path safely. Prevents directory traversal.
  * Checks:
  * 1. macOS .app bundle: Contents/Resources/<path>
  * 2. CWD (development mode): ./<path>
  */
 export function resolveResource(relativePath: string): string {
-  // Prevent directory traversal
   const normalized = normalize(relativePath);
   if (normalized.startsWith("..") || normalized.includes("/../")) {
     throw new Error(`Invalid resource path: ${relativePath}`);
   }
 
-  // Check if we're inside a .app bundle (executable is at Contents/MacOS/satmouse-bin)
-  const execDir = dirname(process.execPath);
-  const appResourcesDir = resolve(execDir, "..", "Resources");
-  const bundlePath = join(appResourcesDir, normalized);
-
-  if (existsSync(bundlePath)) {
-    return bundlePath;
+  if (resourcesDir) {
+    const bundlePath = join(resourcesDir, normalized);
+    if (existsSync(bundlePath)) return bundlePath;
   }
 
-  // Fall back to CWD (dev mode)
   return resolve(normalized);
 }
 

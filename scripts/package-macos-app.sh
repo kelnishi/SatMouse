@@ -31,23 +31,48 @@ cp dist/tray-wrapper.cjs "$APP/Contents/Resources/tray-wrapper.cjs"
 
 # Compile a native launcher that execs node with the tray wrapper.
 # This is CFBundleExecutable — macOS tracks it for menu bar identity.
-# execv replaces the process, so node inherits the PID and bundle association.
+# Fork-based launcher: parent stays alive as the macOS-tracked app process,
+# child runs node with the tray wrapper. This ensures the window server
+# associates the NSStatusItem with the .app bundle (execv doesn't work
+# because macOS already tracked the pre-exec process identity).
 cat > /tmp/satmouse_launcher.c << 'CSRC'
+#include <stdlib.h>
 #include <unistd.h>
-#include <libgen.h>
 #include <string.h>
 #include <stdio.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <mach-o/dyld.h>
+
+static pid_t child_pid = 0;
+void handle_signal(int sig) { if (child_pid > 0) kill(child_pid, sig); }
+
 int main(int argc, char *argv[]) {
-    char dir[4096];
-    strcpy(dir, argv[0]);
-    char *base = dirname(dir);
+    char exe[4096];
+    uint32_t size = sizeof(exe);
+    _NSGetExecutablePath(exe, &size);
+    char resolved[4096];
+    realpath(exe, resolved);
+    char *last_slash = strrchr(resolved, '/');
+    if (last_slash) *last_slash = '\0';
+
     char node_path[4096], script_path[4096];
-    snprintf(node_path, sizeof(node_path), "%s/node", base);
-    snprintf(script_path, sizeof(script_path), "%s/../Resources/tray-wrapper.cjs", base);
-    char *new_argv[] = { node_path, script_path, NULL };
-    execv(node_path, new_argv);
-    perror("execv");
-    return 1;
+    snprintf(node_path, sizeof(node_path), "%s/node", resolved);
+    snprintf(script_path, sizeof(script_path), "%s/../Resources/tray-wrapper.cjs", resolved);
+
+    child_pid = fork();
+    if (child_pid == 0) {
+        char *new_argv[] = { node_path, script_path, NULL };
+        execv(node_path, new_argv);
+        perror("execv");
+        return 1;
+    }
+
+    signal(SIGTERM, handle_signal);
+    signal(SIGINT, handle_signal);
+    int status;
+    waitpid(child_pid, &status, 0);
+    return WEXITSTATUS(status);
 }
 CSRC
 cc -o "$APP/Contents/MacOS/satmouse" /tmp/satmouse_launcher.c -O2
