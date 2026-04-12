@@ -1,10 +1,8 @@
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import type { DeviceInfo } from "../../types.js";
-import type { ConnexionDriver, ConnexionRawEvent } from "./types.js";
+import { ConnexionDriver } from "./types.js";
+import type { ConnexionRawEvent } from "./types.js";
 import { buildDeviceInfo } from "./products.js";
-
-const require = createRequire(import.meta.url);
 
 const FRAMEWORK_PATH = "/Library/Frameworks/3DconnexionClient.framework/3DconnexionClient";
 const OBJC_PATH = "/usr/lib/libobjc.A.dylib";
@@ -27,11 +25,7 @@ const OFF_BUTTONS = 44;
  * Shared macOS driver for ALL 3Dconnexion devices via 3DconnexionClient.framework.
  * Dispatches raw events — each plugin filters by product family.
  */
-export class MacOSConnexionDriver implements ConnexionDriver {
-  onRawEvent: ConnexionDriver["onRawEvent"] = null;
-  onDeviceAdded: ConnexionDriver["onDeviceAdded"] = null;
-  onDeviceRemoved: ConnexionDriver["onDeviceRemoved"] = null;
-
+export class MacOSConnexionDriver extends ConnexionDriver {
   private clientId = 0;
   private runLoopTimer: ReturnType<typeof setInterval> | null = null;
   private devices: DeviceInfo[] = [];
@@ -44,7 +38,8 @@ export class MacOSConnexionDriver implements ConnexionDriver {
   }
 
   async connect(): Promise<void> {
-    const koffi: any = require("koffi");
+    if (this._connected) return;
+    const koffi: any = await import("koffi" as any).then(m => m.default ?? m);
 
     // Bootstrap NSApplication
     const objc = koffi.load(OBJC_PATH);
@@ -94,7 +89,7 @@ export class MacOSConnexionDriver implements ConnexionDriver {
           buttons: buf.readUInt32LE(OFF_BUTTONS),
           productId: _pid,
         };
-        this.onRawEvent?.(event);
+        this.emit("rawEvent", event);
       },
       koffi.pointer(MsgProto)
     );
@@ -105,7 +100,7 @@ export class MacOSConnexionDriver implements ConnexionDriver {
         const info = buildDeviceInfo(productId, deviceId);
         this.devices.push(info);
         console.log(`[3Dconnexion/macOS] Device added: ${info.model} (${info.connectionType}, 0x${productId.toString(16)})`);
-        this.onDeviceAdded?.(productId, deviceId);
+        this.emit("deviceAdded", productId, deviceId);
       },
       koffi.pointer(AddProto)
     );
@@ -115,7 +110,7 @@ export class MacOSConnexionDriver implements ConnexionDriver {
         const deviceId = `cnx-${productId.toString(16)}`;
         this.devices = this.devices.filter((d) => d.id !== deviceId);
         console.log(`[3Dconnexion/macOS] Device removed: ${deviceId}`);
-        this.onDeviceRemoved?.(deviceId);
+        this.emit("deviceRemoved", deviceId);
       },
       koffi.pointer(RemProto)
     );
@@ -134,6 +129,8 @@ export class MacOSConnexionDriver implements ConnexionDriver {
     this.runLoopTimer = setInterval(() => {
       CFRunLoopRunInMode(defaultMode, 0.01, false);
     }, 4);
+
+    this._connected = true;
   }
 
   disconnect(): void {

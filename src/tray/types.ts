@@ -4,6 +4,6 @@ export interface TrayActions {
 }
 
 export interface Tray {
-  start(actions: TrayActions): void;
+  start(actions: TrayActions): void | Promise<void>;
   stop(): void;
 }

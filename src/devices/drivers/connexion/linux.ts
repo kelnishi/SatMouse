@@ -1,10 +1,8 @@
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import type { DeviceInfo } from "../../types.js";
-import type { ConnexionDriver, ConnexionRawEvent } from "./types.js";
+import { ConnexionDriver } from "./types.js";
+import type { ConnexionRawEvent } from "./types.js";
 import { buildDeviceInfo } from "./products.js";
-
-const require = createRequire(import.meta.url);
 
 const LIBSPNAV_PATHS = [
   "/usr/lib/libspnav.so",
@@ -25,11 +23,7 @@ const SPNAV_EVENT_BUTTON = 2;
  *   spnav_poll_event(spnav_event *event) — returns event type
  *   spnav_event is a union with motion (x,y,z,rx,ry,rz) and button (press,bnum)
  */
-export class LinuxConnexionDriver implements ConnexionDriver {
-  onRawEvent: ConnexionDriver["onRawEvent"] = null;
-  onDeviceAdded: ConnexionDriver["onDeviceAdded"] = null;
-  onDeviceRemoved: ConnexionDriver["onDeviceRemoved"] = null;
-
+export class LinuxConnexionDriver extends ConnexionDriver {
   private devices: DeviceInfo[] = [];
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private lib: any = null;
@@ -39,7 +33,7 @@ export class LinuxConnexionDriver implements ConnexionDriver {
   }
 
   async connect(): Promise<void> {
-    const koffi: any = require("koffi");
+    const koffi: any = await import("koffi" as any).then(m => m.default ?? m);
 
     const libPath = LIBSPNAV_PATHS.find((p) => existsSync(p));
     if (!libPath) throw new Error("libspnav not found");
@@ -62,7 +56,7 @@ export class LinuxConnexionDriver implements ConnexionDriver {
     info.name = "SpaceMouse (spnav)";
     info.model = "SpaceMouse (spnav)";
     this.devices = [info];
-    this.onDeviceAdded?.(0, deviceId);
+    this.emit("deviceAdded", 0, deviceId);
 
     // spnav_event layout:
     //   int type;                    // offset 0, 4 bytes
@@ -94,7 +88,7 @@ export class LinuxConnexionDriver implements ConnexionDriver {
           buttons: prevButtons,
           productId: 0,
         };
-        this.onRawEvent?.(event);
+        this.emit("rawEvent", event);
       } else if (type === SPNAV_EVENT_BUTTON) {
         const press = eventBuf.readInt32LE(4);
         const bnum = eventBuf.readInt32LE(8);
@@ -109,7 +103,7 @@ export class LinuxConnexionDriver implements ConnexionDriver {
           buttons: prevButtons,
           productId: 0,
         };
-        this.onRawEvent?.(event);
+        this.emit("rawEvent", event);
       }
     }, 4);
   }

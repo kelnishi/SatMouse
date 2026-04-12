@@ -1,24 +1,35 @@
 import type { ConnexionDriver } from "./types.js";
 
-export type { ConnexionDriver, ConnexionRawEvent, ConnexionCallbacks } from "./types.js";
+export { ConnexionDriver } from "./types.js";
+export type { ConnexionRawEvent } from "./types.js";
 export { CONNEXION_PRODUCTS, lookupProduct, buildDeviceInfo, CONNEXION_VENDOR_ID } from "./products.js";
 export type { ProductInfo, DeviceFamily } from "./products.js";
 
-export async function createConnexionDriver(): Promise<ConnexionDriver> {
+/** Singleton — all 3Dconnexion plugins share one driver instance */
+let sharedDriver: ConnexionDriver | undefined;
+
+export async function getConnexionDriver(): Promise<ConnexionDriver> {
+  if (sharedDriver) return sharedDriver;
+
   switch (process.platform) {
     case "darwin": {
       const { MacOSConnexionDriver } = await import("./macos.js");
-      return new MacOSConnexionDriver();
+      sharedDriver = new MacOSConnexionDriver();
+      break;
     }
     case "win32": {
       const { WindowsConnexionDriver } = await import("./windows.js");
-      return new WindowsConnexionDriver();
+      sharedDriver = new WindowsConnexionDriver();
+      break;
     }
     case "linux": {
       const { LinuxConnexionDriver } = await import("./linux.js");
-      return new LinuxConnexionDriver();
+      sharedDriver = new LinuxConnexionDriver();
+      break;
     }
     default:
       throw new Error(`Unsupported platform: ${process.platform}`);
   }
+
+  return sharedDriver;
 }
