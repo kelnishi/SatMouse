@@ -66,12 +66,17 @@ function main() {
     openBrowser("http://localhost:18945/client/");
   }, koffi.pointer(ActionProto));
 
+  const rescanCb = koffi.register(() => {
+    serverProcess?.kill("SIGUSR1");
+  }, koffi.pointer(ActionProto));
+
   const quitCb = koffi.register(() => {
     serverProcess?.kill();
     process.exit(0);
   }, koffi.pointer(ActionProto));
 
   class_addMethod(TargetClass, sel("openClient:"), openClientCb, "v@:@");
+  class_addMethod(TargetClass, sel("rescanDevices:"), rescanCb, "v@:@");
   class_addMethod(TargetClass, sel("quitApp:"), quitCb, "v@:@");
   objc_registerClassPair(TargetClass);
 
@@ -87,6 +92,11 @@ function main() {
     sel("initWithTitle:action:keyEquivalent:"), str("Open Client"), sel("openClient:"), str(""));
   msg_p(openItem, sel("setTarget:"), target);
   msg_p(menu, sel("addItem:"), openItem);
+
+  const rescanItem = msg_ppp(msg(NSMenuItem, sel("alloc")),
+    sel("initWithTitle:action:keyEquivalent:"), str("Rescan Devices"), sel("rescanDevices:"), str(""));
+  msg_p(rescanItem, sel("setTarget:"), target);
+  msg_p(menu, sel("addItem:"), rescanItem);
 
   msg_p(menu, sel("addItem:"), msg(NSMenuItem, sel("separatorItem")));
 

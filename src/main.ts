@@ -102,6 +102,18 @@ async function main(): Promise<void> {
 
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+
+  // SIGUSR1: rescan for new devices (triggered by tray "Rescan Devices" menu)
+  if (!noDevice) {
+    process.on("SIGUSR1", async () => {
+      console.log("[DeviceManager] Rescanning devices...");
+      await deviceManager.rescan(
+        config.enabledPlugins.length ? config.enabledPlugins : undefined
+      );
+      const devices = deviceManager.getConnectedDevices();
+      console.log(`[DeviceManager] Devices: ${devices.length ? devices.map((d) => d.name).join(", ") : "(none)"}`);
+    });
+  }
 }
 
 function openBrowser(url: string): void {
