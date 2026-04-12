@@ -33,7 +33,7 @@ export class LinuxConnexionDriver extends ConnexionDriver {
   }
 
   async connect(): Promise<void> {
-    const koffi: any = await import("koffi" as any).then(m => m.default ?? m);
+    const koffi: any = require("koffi");
 
     const libPath = LIBSPNAV_PATHS.find((p) => existsSync(p));
     if (!libPath) throw new Error("libspnav not found");

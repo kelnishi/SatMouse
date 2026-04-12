@@ -39,7 +39,7 @@ export class MacOSConnexionDriver extends ConnexionDriver {
 
   async connect(): Promise<void> {
     if (this._connected) return;
-    const koffi: any = await import("koffi" as any).then(m => m.default ?? m);
+    const koffi: any = require("koffi");
 
     // Bootstrap NSApplication
     const objc = koffi.load(OBJC_PATH);

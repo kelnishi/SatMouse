@@ -16,8 +16,8 @@ export class MacOSTray implements Tray {
   private callbackHandles: any[] = [];
   private eventPump: ReturnType<typeof setInterval> | null = null;
 
-  async start(actions: TrayActions): Promise<void> {
-    const koffi: any = await import("koffi" as any).then((m: any) => m.default ?? m);
+  start(actions: TrayActions): void {
+    const koffi: any = require("koffi");
     const objc = koffi.load(OBJC_PATH);
 
     // ObjC runtime functions
