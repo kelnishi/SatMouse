@@ -1,4 +1,4 @@
-import { onManagerReady } from "./registry.js";
+import { onManager } from "./registry.js";
 import type { InputManager } from "../utils/input-manager.js";
 import type { DeviceInfo } from "../core/types.js";
 import type { InputAxis, AxisRoute } from "../utils/action-map.js";
@@ -42,19 +42,45 @@ export class SatMouseDevices extends HTMLElement {
     this.container = shadow.querySelector(".container")!;
   }
 
+  private unsub: (() => void) | null = null;
+
+  private deviceStatusHandler = (event: "connected" | "disconnected", device: DeviceInfo) => {
+    if (event === "connected") this.addDevice(device);
+    else this.removeDevice(device);
+  };
+
+  private stateHandler = (state: string) => {
+    if (state === "connected") {
+      this.manager?.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d)));
+    }
+  };
+
   connectedCallback() {
-    onManagerReady((manager) => {
-      this.manager = manager;
-      manager.on("deviceStatus", (event, device) => {
-        if (event === "connected") this.addDevice(device);
-        else this.removeDevice(device);
-      });
-      manager.on("stateChange", (state) => {
-        if (state === "connected") {
-          manager.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d)));
-        }
-      });
-    });
+    this.unsub = onManager((mgr) => this.bind(mgr));
+  }
+
+  disconnectedCallback() {
+    this.unsub?.();
+    this.unbind();
+    this.container.innerHTML = `<span class="empty">No devices</span>`;
+  }
+
+  private bind(mgr: InputManager): void {
+    this.unbind();
+    this.manager = mgr;
+    mgr.on("deviceStatus", this.deviceStatusHandler);
+    mgr.on("stateChange", this.stateHandler);
+    if (mgr.state === "connected") {
+      mgr.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d)));
+    }
+  }
+
+  private unbind(): void {
+    if (this.manager) {
+      this.manager.off("deviceStatus", this.deviceStatusHandler);
+      this.manager.off("stateChange", this.stateHandler);
+      this.manager = null;
+    }
   }
 
   private addDevice(device: DeviceInfo): void {

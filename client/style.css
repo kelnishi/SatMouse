@@ -15,53 +15,62 @@ body {
 }
 
 #status-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: #16213e;
-  border-bottom: 1px solid #0f3460;
-  font-size: 13px;
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 100;
 }
 
-#status-dot {
-  width: 8px;
-  height: 8px;
+#satmouse-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #16213e;
+  border: 1px solid #1a4a8a;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s;
+}
+
+#satmouse-icon:hover {
+  border-color: #3498db;
+}
+
+#satmouse-icon .icon-dot {
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: #e74c3c;
   transition: background 0.3s;
 }
 
-#status-dot.connected {
-  background: #2ecc71;
+#satmouse-popover {
+  position: fixed;
+  top: 44px;
+  right: 8px;
+  margin: 0;
+  padding: 12px;
+  background: #16213e;
+  border: 1px solid #1a4a8a;
+  border-radius: 8px;
+  color: #e0e0e0;
+  font-family: inherit;
+  font-size: 13px;
+  width: 280px;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
-#status-dot.connecting {
-  background: #f39c12;
+#satmouse-popover hr {
+  border: none;
+  border-top: 1px solid #0f3460;
+  margin: 8px 0;
 }
 
-#protocol-label {
-  margin-left: auto;
-  color: #7f8c8d;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-#launch-btn {
-  margin-left: 8px;
-  padding: 4px 12px;
-  background: #2980b9;
-  color: #fff;
-  border-radius: 4px;
-  font-size: 11px;
-  text-decoration: none;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-#launch-btn:hover {
-  background: #3498db;
+#satmouse-popover::backdrop {
+  background: transparent;
 }
 
 main {
