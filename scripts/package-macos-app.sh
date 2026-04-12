@@ -15,17 +15,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
 
-# Copy the SEA binary as the actual executable
-cp "$BINARY" "$APP/Contents/MacOS/satmouse-bin"
-chmod +x "$APP/Contents/MacOS/satmouse-bin"
-
-# Create a launcher script that sets NODE_PATH for native addons
-cat > "$APP/Contents/MacOS/satmouse" << 'LAUNCHER'
-#!/bin/bash
-DIR="$(cd "$(dirname "$0")" && pwd)"
-export NODE_PATH="$DIR/../Resources/node_modules"
-exec "$DIR/satmouse-bin" "$@"
-LAUNCHER
+# Copy the SEA binary as the direct executable (no launcher script)
+# nativeRequire() handles module resolution from Resources/node_modules
+cp "$BINARY" "$APP/Contents/MacOS/satmouse"
 chmod +x "$APP/Contents/MacOS/satmouse"
 
 # Copy native addon node_modules into Resources
@@ -101,7 +93,6 @@ PLIST
 echo -n "APPL????" > "$APP/Contents/PkgInfo"
 
 echo "=== Created $APP ==="
-echo "  Launcher: $APP/Contents/MacOS/satmouse"
-echo "  Binary:   $APP/Contents/MacOS/satmouse-bin"
+echo "  Binary:   $APP/Contents/MacOS/satmouse"
 echo "  Addons:   $APP/Contents/Resources/node_modules/"
 echo "  LSUIElement: true (menu bar only, no dock icon)"
