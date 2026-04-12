@@ -1,3 +1,4 @@
+import { nativeRequire } from "../native-require.js";
 import type { Tray, TrayActions } from "./types.js";
 
 const OBJC_PATH = "/usr/lib/libobjc.A.dylib";
@@ -17,7 +18,7 @@ export class MacOSTray implements Tray {
   private eventPump: ReturnType<typeof setInterval> | null = null;
 
   start(actions: TrayActions): void {
-    const koffi: any = require("koffi");
+    const koffi: any = nativeRequire("koffi");
     const objc = koffi.load(OBJC_PATH);
 
     // ObjC runtime functions

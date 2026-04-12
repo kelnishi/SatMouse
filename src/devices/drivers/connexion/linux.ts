@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { nativeRequire } from "../../../native-require.js";
 import type { DeviceInfo } from "../../types.js";
 import { ConnexionDriver } from "./types.js";
 import type { ConnexionRawEvent } from "./types.js";
@@ -33,7 +34,7 @@ export class LinuxConnexionDriver extends ConnexionDriver {
   }
 
   async connect(): Promise<void> {
-    const koffi: any = require("koffi");
+    const koffi: any = nativeRequire("koffi");
 
     const libPath = LIBSPNAV_PATHS.find((p) => existsSync(p));
     if (!libPath) throw new Error("libspnav not found");
