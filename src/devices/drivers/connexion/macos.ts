@@ -6,7 +6,6 @@ import type { ConnexionRawEvent } from "./types.js";
 import { buildDeviceInfo } from "./products.js";
 
 const FRAMEWORK_PATH = "/Library/Frameworks/3DconnexionClient.framework/3DconnexionClient";
-const OBJC_PATH = "/usr/lib/libobjc.A.dylib";
 const CF_PATH = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
 
 const kConnexionClientManual = 0x2b2b2b2b;
@@ -42,18 +41,7 @@ export class MacOSConnexionDriver extends ConnexionDriver {
     if (this._connected) return;
     const koffi: any = nativeRequire("koffi");
 
-    // Bootstrap NSApplication
-    const objc = koffi.load(OBJC_PATH);
-    const objc_getClass = objc.func("void *objc_getClass(const char *name)");
-    const sel = objc.func("void *sel_registerName(const char *name)");
-    const msg = objc.func("void *objc_msgSend(void *self, void *sel)");
-    const msg_l = objc.func("void *objc_msgSend(void *self, void *sel, long arg)");
-
-    const NSApp = msg(objc_getClass("NSApplication"), sel("sharedApplication"));
-    msg_l(NSApp, sel("setActivationPolicy:"), 1); // Accessory
-    msg_l(NSApp, sel("activateIgnoringOtherApps:"), 1);
-
-    // Load framework
+    // Load framework (NSApplication bootstrapped by ensureNSApp() in main.ts)
     const lib = koffi.load(FRAMEWORK_PATH);
     const cfLib = koffi.load(CF_PATH);
 

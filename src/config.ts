@@ -32,7 +32,7 @@ export function loadConfig(): SatMouseConfig {
   return {
     wtPort: parsePort(process.env.SATMOUSE_WT_PORT, 18946),
     wsPort: parsePort(process.env.SATMOUSE_WS_PORT, 18945),
-    host: process.env.SATMOUSE_HOST ?? "127.0.0.1",
+    host: process.env.SATMOUSE_HOST ?? "0.0.0.0",
     certsDir: resolve(process.env.SATMOUSE_CERTS_DIR ?? "./certs"),
     serviceName: process.env.SATMOUSE_SERVICE_NAME ?? "SatMouse",
     enabledPlugins: process.env.SATMOUSE_PLUGINS?.split(",") ?? [],
