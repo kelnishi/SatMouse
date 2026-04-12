@@ -1,7 +1,7 @@
 export { InputManager } from "./input-manager.js";
-export type { InputManagerEvents } from "./input-manager.js";
-export { DEFAULT_CONFIG, mergeConfig } from "./config.js";
-export type { InputConfig } from "./config.js";
+export type { InputManagerEvents, DeviceWithConfig } from "./input-manager.js";
+export { DEFAULT_CONFIG, mergeConfig, resolveDeviceConfig } from "./config.js";
+export type { InputConfig, DeviceConfig } from "./config.js";
 export {
   applyFlip,
   applySensitivity,
