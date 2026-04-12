@@ -32,8 +32,8 @@ async function main(): Promise<void> {
   const version = getVersion();
 
   // Bootstrap NSApplication before anything else on macOS
-  // Required for both tray icon and 3Dconnexion framework
-  if (process.platform === "darwin" && !isChildProcess) ensureNSApp();
+  // Required for tray icon (dev mode) and 3Dconnexion framework (always)
+  if (process.platform === "darwin") ensureNSApp();
 
   // Generate TLS certs if missing (for WebTransport)
   ensureCerts(config.certsDir);
