@@ -4,7 +4,7 @@ set -euo pipefail
 # Creates SatMouse.app bundle from the SEA binary in dist/
 # Usage: ./scripts/package-macos-app.sh [binary_path]
 
-BINARY="${1:-dist/satmouse}"
+NODE_BIN="${1:-$(command -v node)}"
 APP="dist/SatMouse.app"
 BUNDLE_ID="com.kelnishi.SatMouse"
 VERSION="${SATMOUSE_VERSION:-0.1.0}"
@@ -15,9 +15,23 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
 
-# Copy the SEA binary as the direct executable (no launcher script)
-# nativeRequire() handles module resolution from Resources/node_modules
-cp "$BINARY" "$APP/Contents/MacOS/satmouse"
+# Ship Node binary in Resources/bin/ (NOT MacOS/ — 3DxWare daemon validates
+# binaries in Contents/MacOS/ and rejects unrecognized code signatures)
+mkdir -p "$APP/Contents/Resources/bin"
+cp "$NODE_BIN" "$APP/Contents/Resources/bin/node"
+chmod +x "$APP/Contents/Resources/bin/node"
+
+# Copy the bundled JS as .cjs (CJS must not go through ESM loader)
+cp dist/main.js "$APP/Contents/Resources/main.cjs"
+
+# Launcher: exec node directly with the .cjs file (no stdin pipe —
+# stdin pipe prevents 3DxWare from delivering axis events)
+cat > "$APP/Contents/MacOS/satmouse" << 'LAUNCHER'
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+RESOURCES="$DIR/../Resources"
+exec "$RESOURCES/bin/node" "$RESOURCES/main.cjs"
+LAUNCHER
 chmod +x "$APP/Contents/MacOS/satmouse"
 
 # Copy native addon node_modules into Resources
