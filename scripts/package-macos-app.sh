@@ -42,6 +42,9 @@ if [ -d "node_modules/@fails-components" ]; then
   cp -R node_modules/@fails-components "$APP/Contents/Resources/node_modules/"
 fi
 
+# Copy package.json for version info
+cp package.json "$APP/Contents/Resources/"
+
 # Copy specs and client for the built-in web server
 if [ -d "specs" ]; then
   cp -R specs "$APP/Contents/Resources/"

@@ -6,8 +6,11 @@ import type { SatMouseConfig } from "../config.js";
 import { join } from "node:path";
 
 /**
- * Manages both transport servers (WebTransport + WebSocket) and wires
- * them to the DeviceManager's event stream.
+ * Manages all transport servers and wires them to the DeviceManager.
+ *
+ * - WebSocket on config.wsPort (default 18944) — satmouse-json/satmouse-binary
+ * - Legacy JSON on same port, path /legacy — spacemouse-proxy compatible
+ * - WebTransport on config.wtPort (default 18943)
  */
 export class TransportManager {
   private wt: WebTransportServer;
@@ -25,7 +28,7 @@ export class TransportManager {
   }
 
   async start(deviceManager: DeviceManager, httpServer?: any): Promise<void> {
-    // Wire device events to all transports (including legacy)
+    // Wire device events to all transports
     deviceManager.on("spatialData", (data) => {
       this.wt.broadcastSpatialData(data);
       this.ws.broadcastSpatialData(data);
@@ -46,11 +49,11 @@ export class TransportManager {
       this.ws.broadcastDeviceStatus("disconnected", info);
     });
 
-    // Start WebSocket first (no TLS requirement)
+    // Start WebSocket (attaches to httpServer)
     this.ws.start(httpServer);
 
-    // Start legacy server on port 18944
-    this.legacy.start();
+    // Start legacy compatibility server on same httpServer, path /legacy
+    this.legacy.start(httpServer);
 
     // Start WebTransport (requires TLS certs)
     try {

@@ -14,7 +14,7 @@ import type {
 /**
  * Build a satmouse:// connect URI from connection parameters.
  */
-export function buildSatMouseUri(host = "localhost", wsPort = 4444, wtPort = 4443): string {
+export function buildSatMouseUri(host = "localhost", wsPort = 18944, wtPort = 18943): string {
   return `satmouse://connect?host=${encodeURIComponent(host)}&wsPort=${wsPort}&wtPort=${wtPort}`;
 }
 
@@ -27,8 +27,8 @@ export function buildSatMouseUri(host = "localhost", wsPort = 4444, wtPort = 444
 export function parseSatMouseUri(uri: string): { tdUrl: string; wsUrl: string; wtUrl: string } {
   const url = new URL(uri);
   const host = url.searchParams.get("host") ?? "localhost";
-  const wsPort = url.searchParams.get("wsPort") ?? "4444";
-  const wtPort = url.searchParams.get("wtPort") ?? "4443";
+  const wsPort = url.searchParams.get("wsPort") ?? "18944";
+  const wtPort = url.searchParams.get("wtPort") ?? "18943";
   return {
     tdUrl: `http://${host}:${wsPort}/td.json`,
     wsUrl: `ws://${host}:${wsPort}/spatial`,
@@ -91,7 +91,7 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
     if (!wtUrl && !wsUrl) {
       const tdUrl =
         this.options.tdUrl ??
-        new URL("/td.json", globalThis.location?.origin ?? "http://localhost:4444").href;
+        new URL("/td.json", globalThis.location?.origin ?? "http://localhost:18944").href;
 
       try {
         const td = await fetchThingDescription(tdUrl);
@@ -103,7 +103,7 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
       } catch (err) {
         this.emit("error", err instanceof Error ? err : new Error(String(err)));
         // Fall back to default WS URL
-        wsUrl = `ws://${globalThis.location?.hostname ?? "localhost"}:${globalThis.location?.port ?? "4444"}/spatial`;
+        wsUrl = `ws://${globalThis.location?.hostname ?? "localhost"}:${globalThis.location?.port ?? "18944"}/spatial`;
       }
     }
 
