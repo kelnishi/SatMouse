@@ -7,15 +7,15 @@
  */
 
 export interface AxisMapping {
-  /** Raw axis index from the HID report */
+  /** Byte offset in the HID report for this axis */
   sourceAxis: number;
   /** Target spatial axis */
   target: "tx" | "ty" | "tz" | "rx" | "ry" | "rz";
-  /** Scale multiplier (default: 1) */
+  /** Scale multiplier applied after normalization (default: 350 = SpaceMouse range) */
   scale?: number;
   /** Invert the axis (default: false) */
   invert?: boolean;
-  /** Dead zone threshold (default: 0) */
+  /** Dead zone as fraction of full range, 0-1 (default: 0) */
   deadZone?: number;
 }
 
@@ -33,6 +33,12 @@ export interface HIDDeviceMapping {
   vendorId: number;
   /** USB product ID (0 = match any) */
   productId: number;
+  /** Axis data format in HID report */
+  axisFormat: "int16" | "uint8";
+  /** Byte offset where axis data starts in the report (default: 0) */
+  axisOffset?: number;
+  /** Byte offset where button data starts (default: after axes) */
+  buttonOffset?: number;
   /** Axis mappings */
   axes: AxisMapping[];
   /** Button mappings */
@@ -44,8 +50,9 @@ export const BUILTIN_MAPPINGS: HIDDeviceMapping[] = [
   // Space Mushroom (Ahmsville Labs) — DIY 6DOF
   {
     name: "Space Mushroom",
-    vendorId: 0x1209, // pid.codes VID
+    vendorId: 0x1209,
     productId: 0x0001,
+    axisFormat: "int16",
     axes: [
       { sourceAxis: 0, target: "tx" },
       { sourceAxis: 1, target: "ty" },
@@ -63,46 +70,42 @@ export const BUILTIN_MAPPINGS: HIDDeviceMapping[] = [
   // Xbox Controller — dual stick mapped to 6DOF
   {
     name: "Xbox Controller",
-    vendorId: 0x045e, // Microsoft
-    productId: 0x0000, // 0 = match any Microsoft gamepad
+    vendorId: 0x045e,
+    productId: 0x0000,
+    axisFormat: "uint8",
+    axisOffset: 1, // First byte is report ID
     axes: [
-      { sourceAxis: 0, target: "tx", deadZone: 0.1 },        // Left stick X → TX
-      { sourceAxis: 1, target: "tz", invert: true, deadZone: 0.1 }, // Left stick Y → TZ
-      { sourceAxis: 2, target: "ty", deadZone: 0.1 },        // Left trigger → TY (forward)
-      { sourceAxis: 3, target: "rx", deadZone: 0.1 },        // Right stick X → RX (unassigned, available)
-      { sourceAxis: 4, target: "ry", deadZone: 0.1 },        // Right stick Y → RY
-      { sourceAxis: 5, target: "rz", deadZone: 0.1 },        // Right trigger → RZ (roll, optional)
+      { sourceAxis: 0, target: "tx", deadZone: 0.15 },
+      { sourceAxis: 1, target: "tz", invert: true, deadZone: 0.15 },
+      { sourceAxis: 3, target: "ry", deadZone: 0.15 },
+      { sourceAxis: 4, target: "rx", invert: true, deadZone: 0.15 },
     ],
     buttons: [
-      { sourceButton: 0, targetButton: 0 },  // A
-      { sourceButton: 1, targetButton: 1 },  // B
-      { sourceButton: 2, targetButton: 2 },  // X
-      { sourceButton: 3, targetButton: 3 },  // Y
-      { sourceButton: 4, targetButton: 4 },  // LB
-      { sourceButton: 5, targetButton: 5 },  // RB
+      { sourceButton: 0, targetButton: 0 },
+      { sourceButton: 1, targetButton: 1 },
+      { sourceButton: 2, targetButton: 2 },
+      { sourceButton: 3, targetButton: 3 },
     ],
   },
 
-  // PlayStation DualSense/DualShock — dual stick mapped to 6DOF
+  // PlayStation DualShock/DualSense — dual stick mapped to 6DOF
   {
     name: "PlayStation Controller",
-    vendorId: 0x054c, // Sony
-    productId: 0x0000, // 0 = match any Sony gamepad
+    vendorId: 0x054c,
+    productId: 0x0000,
+    axisFormat: "uint8",
+    axisOffset: 1, // First byte is report ID
     axes: [
-      { sourceAxis: 0, target: "tx", deadZone: 0.1 },
-      { sourceAxis: 1, target: "tz", invert: true, deadZone: 0.1 },
-      { sourceAxis: 2, target: "ty", deadZone: 0.1 },
-      { sourceAxis: 3, target: "rx", deadZone: 0.1 },
-      { sourceAxis: 4, target: "ry", deadZone: 0.1 },
-      { sourceAxis: 5, target: "rz", deadZone: 0.1 },
+      { sourceAxis: 0, target: "tx", deadZone: 0.15 },
+      { sourceAxis: 1, target: "tz", invert: true, deadZone: 0.15 },
+      { sourceAxis: 2, target: "ry", deadZone: 0.15 },
+      { sourceAxis: 3, target: "rx", invert: true, deadZone: 0.15 },
     ],
     buttons: [
-      { sourceButton: 0, targetButton: 0 },  // Cross
-      { sourceButton: 1, targetButton: 1 },  // Circle
-      { sourceButton: 2, targetButton: 2 },  // Square
-      { sourceButton: 3, targetButton: 3 },  // Triangle
-      { sourceButton: 4, targetButton: 4 },  // L1
-      { sourceButton: 5, targetButton: 5 },  // R1
+      { sourceButton: 0, targetButton: 0 },
+      { sourceButton: 1, targetButton: 1 },
+      { sourceButton: 2, targetButton: 2 },
+      { sourceButton: 3, targetButton: 3 },
     ],
   },
 
@@ -111,6 +114,7 @@ export const BUILTIN_MAPPINGS: HIDDeviceMapping[] = [
     name: "Generic 6DOF HID",
     vendorId: 0,
     productId: 0,
+    axisFormat: "int16",
     axes: [
       { sourceAxis: 0, target: "tx" },
       { sourceAxis: 1, target: "ty" },
