@@ -33,8 +33,11 @@ export class LegacyServer {
   // Current button state
   private buttons = 0;
 
-  start(): void {
-    this.wss = new WebSocketServer({ port: LEGACY_PORT, host: "127.0.0.1" });
+  start(httpServer?: any): void {
+    this.wss = new WebSocketServer({
+      server: httpServer,
+      path: "/legacy",
+    });
 
     this.wss.on("connection", (ws: WebSocket) => {
       this.clients.add(ws);
@@ -56,7 +59,7 @@ export class LegacyServer {
       this.broadcast();
     }, TICK_MS);
 
-    console.log(`[Legacy] Listening on ws://127.0.0.1:${LEGACY_PORT}`);
+    console.log("[Legacy] Listening on /legacy path");
   }
 
   stop(): void {

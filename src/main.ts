@@ -10,52 +10,28 @@ import { MDNSAdvertiser } from "./discovery/mdns.js";
 import { TDServer } from "./discovery/td-server.js";
 import { createTray } from "./tray/index.js";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolveResource } from "./resources.js";
+
+function getVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(resolveResource("package.json"), "utf-8"));
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const version = getVersion();
 
-  console.log("SatMouse v0.1.0 — 3D Spatial Input Bridge");
+  console.log(`SatMouse v${version} — 6DOF Spatial Input Bridge`);
   console.log("──────────────────────────────────────────");
 
-  // 1. Set up device manager and register plugins
-  const deviceManager = new DeviceManager();
-  deviceManager.registerPlugin(new SpaceMousePlugin());
-  deviceManager.registerPlugin(new SpaceFoxPlugin());
-  deviceManager.registerPlugin(new OrbionPlugin());
-  deviceManager.registerPlugin(new CadMousePlugin());
-  deviceManager.registerPlugin(new HIDPlugin());
-
-  // 2. Start device connections
-  await deviceManager.start(
-    config.enabledPlugins.length ? config.enabledPlugins : undefined
-  );
-
-  const devices = deviceManager.getConnectedDevices();
-  console.log(`\nDevices: ${devices.length ? devices.map((d) => d.name).join(", ") : "(none connected)"}`);
-
-  // 3. Start HTTP server (serves td.json and reference client)
-  const tdServer = new TDServer(config, deviceManager);
-  const httpServer = tdServer.start();
-
-  // 4. Start transport servers (WebTransport + WebSocket)
-  const transportManager = new TransportManager(config);
-  await transportManager.start(deviceManager, httpServer);
-
-  // 5. Start mDNS advertisement
-  const mdns = new MDNSAdvertiser(config);
-  mdns.start();
-
+  // 1. Initialize system tray FIRST — bootstraps NSApplication on macOS,
+  //    which the 3Dconnexion framework requires for event delivery.
   const clientUrl = `http://localhost:${config.wsPort}/client/`;
-
-  console.log("\n──────────────────────────────────────────");
-  console.log(`Thing Description: http://localhost:${config.wsPort}/td.json`);
-  console.log(`Reference client:  ${clientUrl}`);
-  console.log(`WebSocket:         ws://localhost:${config.wsPort}/spatial`);
-  console.log(`WebTransport:      https://localhost:${config.wtPort}`);
-  console.log(`Legacy (compat):   ws://127.0.0.1:18944`);
-  console.log("──────────────────────────────────────────\n");
-
-  // 6. Start system tray
   const shutdown = () => {
     console.log("\nShutting down...");
     mdns.stop();
@@ -67,18 +43,50 @@ async function main(): Promise<void> {
 
   const tray = await createTray();
   tray?.start({
-    onOpenClient: () => {
-      openBrowser(clientUrl);
-    },
+    onOpenClient: () => openBrowser(clientUrl),
     onQuit: shutdown,
   });
+
+  // 2. Set up device manager and register plugins
+  const deviceManager = new DeviceManager();
+  deviceManager.registerPlugin(new SpaceMousePlugin());
+  deviceManager.registerPlugin(new SpaceFoxPlugin());
+  deviceManager.registerPlugin(new OrbionPlugin());
+  deviceManager.registerPlugin(new CadMousePlugin());
+  deviceManager.registerPlugin(new HIDPlugin());
+
+  // 3. Start device connections (after tray/NSApp is initialized)
+  await deviceManager.start(
+    config.enabledPlugins.length ? config.enabledPlugins : undefined
+  );
+
+  const devices = deviceManager.getConnectedDevices();
+  console.log(`\nDevices: ${devices.length ? devices.map((d) => d.name).join(", ") : "(none connected)"}`);
+
+  // 4. Start HTTP server (serves td.json and reference client)
+  const tdServer = new TDServer(config, deviceManager);
+  const httpServer = tdServer.start();
+
+  // 5. Start transport servers (WebTransport + WebSocket + Legacy)
+  const transportManager = new TransportManager(config);
+  await transportManager.start(deviceManager, httpServer);
+
+  // 6. Start mDNS advertisement
+  const mdns = new MDNSAdvertiser(config);
+  mdns.start();
+
+  console.log("\n──────────────────────────────────────────");
+  console.log(`Thing Description: http://localhost:${config.wsPort}/td.json`);
+  console.log(`Reference client:  ${clientUrl}`);
+  console.log(`WebSocket:         ws://localhost:${config.wsPort}/spatial`);
+  console.log(`WebTransport:      https://localhost:${config.wtPort}`);
+  console.log("──────────────────────────────────────────\n");
 
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 }
 
 function openBrowser(url: string): void {
-  // Validate URL to prevent injection — only allow http/https
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;

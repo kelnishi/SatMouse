@@ -56,6 +56,10 @@ function resolveEndpoints(td) {
 
 // packages/client/src/core/decode.ts
 function decodeBinaryFrame(buffer) {
+  const len = buffer instanceof ArrayBuffer ? buffer.byteLength : buffer.byteLength;
+  if (len < 20) {
+    throw new RangeError(`Spatial frame too short: expected \u226520 bytes, got ${len}`);
+  }
   const ab = buffer instanceof ArrayBuffer ? buffer : buffer.buffer;
   const offset = buffer instanceof Uint8Array ? buffer.byteOffset : 0;
   const view = new DataView(ab, offset);
@@ -92,9 +96,15 @@ function decodeButtonStream(buffer) {
   while (pos + 4 <= buffer.length) {
     const view = new DataView(buffer.buffer, buffer.byteOffset + pos);
     const len = view.getUint32(0, true);
-    if (pos + 4 + len > buffer.length) break;
+    if (len > 65536 || pos + 4 + len > buffer.length) break;
     const json = new TextDecoder().decode(buffer.subarray(pos + 4, pos + 4 + len));
-    events.push(JSON.parse(json));
+    try {
+      const event = JSON.parse(json);
+      if (typeof event.button === "number" && typeof event.pressed === "boolean") {
+        events.push(event);
+      }
+    } catch {
+    }
     pos += 4 + len;
   }
   return { events, remainder: buffer.subarray(pos) };
@@ -238,6 +248,17 @@ var WebSocketAdapter = class {
 };
 
 // packages/client/src/core/connection.ts
+function parseSatMouseUri(uri) {
+  const url = new URL(uri);
+  const host = url.searchParams.get("host") ?? "localhost";
+  const wsPort = url.searchParams.get("wsPort") ?? "18944";
+  const wtPort = url.searchParams.get("wtPort") ?? "18943";
+  return {
+    tdUrl: `http://${host}:${wsPort}/td.json`,
+    wsUrl: `ws://${host}:${wsPort}/spatial`,
+    wtUrl: `https://${host}:${wtPort}`
+  };
+}
 var DEFAULT_OPTIONS = {
   transports: ["webtransport", "websocket"],
   reconnectDelay: 2e3,
@@ -267,8 +288,14 @@ var SatMouseConnection = class extends TypedEmitter {
     let wtUrl = this.options.wtUrl;
     let wsUrl = this.options.wsUrl;
     let certHash = this.options.certHash;
+    if (this.options.uri) {
+      const parsed = parseSatMouseUri(this.options.uri);
+      wtUrl = wtUrl ?? parsed.wtUrl;
+      wsUrl = wsUrl ?? parsed.wsUrl;
+      this.options.tdUrl = this.options.tdUrl ?? parsed.tdUrl;
+    }
     if (!wtUrl && !wsUrl) {
-      const tdUrl = this.options.tdUrl ?? new URL("/td.json", globalThis.location?.origin ?? "http://localhost:4444").href;
+      const tdUrl = this.options.tdUrl ?? new URL("/td.json", globalThis.location?.origin ?? "http://localhost:18944").href;
       try {
         const td = await fetchThingDescription(tdUrl);
         const endpoints = resolveEndpoints(td);
@@ -278,7 +305,7 @@ var SatMouseConnection = class extends TypedEmitter {
         this.deviceInfoUrl = endpoints.deviceInfoUrl ?? null;
       } catch (err) {
         this.emit("error", err instanceof Error ? err : new Error(String(err)));
-        wsUrl = `ws://${globalThis.location?.hostname ?? "localhost"}:${globalThis.location?.port ?? "4444"}/spatial`;
+        wsUrl = `ws://${globalThis.location?.hostname ?? "localhost"}:${globalThis.location?.port ?? "18944"}/spatial`;
       }
     }
     for (const proto of this.options.transports) {
