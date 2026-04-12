@@ -51,15 +51,16 @@ function main() {
     const alert = msg(msg(NSAlert, sel("alloc")), sel("init"));
     msg_p(alert, sel("setMessageText:"), str("Move SatMouse to Applications"));
     msg_p(alert, sel("setInformativeText:"),
-      str("SatMouse cannot run from this location.\n\nPlease move SatMouse.app to /Applications or ~/Applications, then relaunch."));
+      str("SatMouse cannot run from this location.\n\nPlease drag SatMouse.app from Downloads into the Applications folder, then relaunch."));
     msg_l(alert, sel("setAlertStyle:"), 2); // NSAlertStyleCritical
     msg_p(alert, sel("addButtonWithTitle:"), str("Quit"));
     msg(alert, sel("runModal"));
-    // Open ~/Applications in Finder to help the user move the app
+    // Open both ~/Downloads and ~/Applications so the user can drag between them
     const home = process.env.HOME ?? "/Users/" + process.env.USER;
     const appsDir = join(home, "Applications");
     try { require("node:fs").mkdirSync(appsDir, { recursive: true }); } catch {}
     execFile("open", [appsDir]);
+    execFile("open", [join(home, "Downloads")]);
     process.exit(1);
   }
 
