@@ -71,6 +71,10 @@ function main() {
     serverProcess?.kill("SIGUSR1");
   }, koffi.pointer(ActionProto));
 
+  const aboutCb = koffi.register(() => {
+    openBrowser("https://kelnishi.github.io/SatMouse");
+  }, koffi.pointer(ActionProto));
+
   const quitCb = koffi.register(() => {
     serverProcess?.kill();
     process.exit(0);
@@ -84,6 +88,7 @@ function main() {
 
   class_addMethod(TargetClass, sel("openClient:"), openClientCb, "v@:@");
   class_addMethod(TargetClass, sel("rescanDevices:"), rescanCb, "v@:@");
+  class_addMethod(TargetClass, sel("aboutApp:"), aboutCb, "v@:@");
   class_addMethod(TargetClass, sel("quitApp:"), quitCb, "v@:@");
   class_addMethod(TargetClass, sel("handleURL:withReply:"), handleURLCb, "v@:@@");
   objc_registerClassPair(TargetClass);
@@ -105,13 +110,20 @@ function main() {
 
   const menu = msg_p(msg(NSMenu, sel("alloc")), sel("initWithTitle:"), str("SatMouse"));
 
+  const aboutItem = msg_ppp(msg(NSMenuItem, sel("alloc")),
+    sel("initWithTitle:action:keyEquivalent:"), str("About SatMouse"), sel("aboutApp:"), str(""));
+  msg_p(aboutItem, sel("setTarget:"), target);
+  msg_p(menu, sel("addItem:"), aboutItem);
+
+  msg_p(menu, sel("addItem:"), msg(NSMenuItem, sel("separatorItem")));
+
   const openItem = msg_ppp(msg(NSMenuItem, sel("alloc")),
-    sel("initWithTitle:action:keyEquivalent:"), str("Open Client"), sel("openClient:"), str(""));
+    sel("initWithTitle:action:keyEquivalent:"), str("Open Web Client"), sel("openClient:"), str(""));
   msg_p(openItem, sel("setTarget:"), target);
   msg_p(menu, sel("addItem:"), openItem);
 
   const rescanItem = msg_ppp(msg(NSMenuItem, sel("alloc")),
-    sel("initWithTitle:action:keyEquivalent:"), str("Rescan Devices"), sel("rescanDevices:"), str(""));
+    sel("initWithTitle:action:keyEquivalent:"), str("Refresh Devices"), sel("rescanDevices:"), str(""));
   msg_p(rescanItem, sel("setTarget:"), target);
   msg_p(menu, sel("addItem:"), rescanItem);
 
@@ -154,7 +166,7 @@ function main() {
   });
 
   // Keep refs to prevent GC
-  const _refs = [openClientCb, rescanCb, handleURLCb, quitCb, item, target, menu, bar];
+  const _refs = [openClientCb, rescanCb, aboutCb, handleURLCb, quitCb, item, target, menu, bar];
 }
 
 function openBrowser(url: string): void {

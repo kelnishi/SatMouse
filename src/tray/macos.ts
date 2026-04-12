@@ -1,7 +1,12 @@
+import { execFile } from "node:child_process";
 import { nativeRequire } from "../native-require.js";
 import type { Tray, TrayActions } from "./types.js";
 
 const OBJC_PATH = "/usr/lib/libobjc.A.dylib";
+
+function openBrowser(url: string): void {
+  execFile("open", [url]);
+}
 
 /**
  * macOS menu bar (NSStatusItem) tray via koffi + ObjC runtime.
@@ -65,6 +70,10 @@ export class MacOSTray implements Tray {
       () => { actions.onRescanDevices(); },
       koffi.pointer(ActionProto)
     );
+    const aboutCb = koffi.register(
+      () => { openBrowser("https://kelnishi.github.io/SatMouse"); },
+      koffi.pointer(ActionProto)
+    );
     const quitCb = koffi.register(
       () => { actions.onQuit(); },
       koffi.pointer(ActionProto)
@@ -72,6 +81,7 @@ export class MacOSTray implements Tray {
 
     class_addMethod(TargetClass, sel("openClient:"), openClientCb, "v@:@");
     class_addMethod(TargetClass, sel("rescanDevices:"), rescanCb, "v@:@");
+    class_addMethod(TargetClass, sel("aboutApp:"), aboutCb, "v@:@");
     class_addMethod(TargetClass, sel("quitApp:"), quitCb, "v@:@");
     objc_registerClassPair(TargetClass);
 
@@ -83,29 +93,23 @@ export class MacOSTray implements Tray {
 
     const menu = msg_p(msg(NSMenu, sel("alloc")), sel("initWithTitle:"), str("SatMouse"));
 
-    // "Open Client" item
-    const openItem = msg_ppp(
-      msg(NSMenuItem, sel("alloc")),
-      sel("initWithTitle:action:keyEquivalent:"),
-      str("Open Client"),
-      sel("openClient:"),
-      str("")
-    );
+    const aboutItem = msg_ppp(msg(NSMenuItem, sel("alloc")),
+      sel("initWithTitle:action:keyEquivalent:"), str("About SatMouse"), sel("aboutApp:"), str(""));
+    msg_p(aboutItem, sel("setTarget:"), target);
+    msg_p(menu, sel("addItem:"), aboutItem);
+
+    msg_p(menu, sel("addItem:"), msg(NSMenuItem, sel("separatorItem")));
+
+    const openItem = msg_ppp(msg(NSMenuItem, sel("alloc")),
+      sel("initWithTitle:action:keyEquivalent:"), str("Open Web Client"), sel("openClient:"), str(""));
     msg_p(openItem, sel("setTarget:"), target);
     msg_p(menu, sel("addItem:"), openItem);
 
-    // "Rescan Devices" item
-    const rescanItem = msg_ppp(
-      msg(NSMenuItem, sel("alloc")),
-      sel("initWithTitle:action:keyEquivalent:"),
-      str("Rescan Devices"),
-      sel("rescanDevices:"),
-      str("")
-    );
+    const rescanItem = msg_ppp(msg(NSMenuItem, sel("alloc")),
+      sel("initWithTitle:action:keyEquivalent:"), str("Refresh Devices"), sel("rescanDevices:"), str(""));
     msg_p(rescanItem, sel("setTarget:"), target);
     msg_p(menu, sel("addItem:"), rescanItem);
 
-    // Separator
     msg_p(menu, sel("addItem:"), msg(NSMenuItem, sel("separatorItem")));
 
     // "Quit SatMouse" item
@@ -155,7 +159,7 @@ export class MacOSTray implements Tray {
     }, 16); // ~60 Hz — smooth menu interaction
 
     // Keep references to prevent GC
-    this.callbackHandles = [openClientCb, rescanCb, quitCb, statusItem, target, menu, NSApp];
+    this.callbackHandles = [openClientCb, rescanCb, aboutCb, quitCb, statusItem, target, menu, NSApp];
 
     console.log("[Tray] Menu bar item active");
   }
