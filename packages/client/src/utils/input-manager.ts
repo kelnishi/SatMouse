@@ -1,8 +1,8 @@
 import { TypedEmitter } from "../core/emitter.js";
 import type { SatMouseConnection } from "../core/connection.js";
 import type { SpatialData, ButtonEvent, DeviceInfo, ConnectionState, TransportProtocol } from "../core/types.js";
-import type { InputConfig } from "./config.js";
-import { DEFAULT_CONFIG, mergeConfig } from "./config.js";
+import type { InputConfig, DeviceConfig } from "./config.js";
+import { DEFAULT_CONFIG, mergeConfig, resolveDeviceConfig } from "./config.js";
 import { loadSettings, saveSettings, type StorageAdapter } from "./persistence.js";
 import {
   applyFlip,
@@ -27,18 +27,26 @@ export interface InputManagerEvents {
   configChange: (config: InputConfig) => void;
 }
 
+/** A connected device paired with its resolved configuration */
+export interface DeviceWithConfig {
+  device: DeviceInfo;
+  config: DeviceConfig;
+}
+
 /**
  * Unified device service that wraps one or more SatMouseConnections
  * and provides a single processed event stream.
  *
- * Applies a configurable transform pipeline to spatial data:
+ * Applies a configurable transform pipeline per-device:
  *   deadZone → dominant → flip → axisRemap → sensitivity → lock
  *
- * Persists settings to storage (localStorage by default).
+ * Per-device overrides are resolved from InputConfig.devices using
+ * device ID matching (exact or pattern with wildcard "*").
  */
 export class InputManager extends TypedEmitter<InputManagerEvents> {
   private connections: SatMouseConnection[] = [];
   private storage?: StorageAdapter;
+  private knownDevices = new Map<string, DeviceInfo>();
 
   private _config: InputConfig;
 
@@ -79,12 +87,47 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
   /** Fetch device info from all connections */
   async fetchDeviceInfo(): Promise<DeviceInfo[]> {
     const results = await Promise.all(this.connections.map((c) => c.fetchDeviceInfo()));
-    return results.flat();
+    const devices = results.flat();
+    // Track known devices
+    for (const d of devices) this.knownDevices.set(d.id, d);
+    return devices;
   }
 
-  /** Update configuration. Persists by default. */
+  /** Get all known connected devices paired with their resolved config */
+  getDevicesWithConfig(): DeviceWithConfig[] {
+    return Array.from(this.knownDevices.values()).map((device) => ({
+      device,
+      config: this.getDeviceConfig(device.id),
+    }));
+  }
+
+  /** Get the resolved per-device config (global defaults + device overrides) */
+  getDeviceConfig(deviceId: string): DeviceConfig {
+    const resolved = resolveDeviceConfig(this._config, deviceId);
+    return {
+      sensitivity: resolved.sensitivity,
+      flip: resolved.flip,
+      deadZone: resolved.deadZone,
+      dominant: resolved.dominant,
+      axisRemap: resolved.axisRemap,
+      lockPosition: resolved.lockPosition,
+      lockRotation: resolved.lockRotation,
+    };
+  }
+
+  /** Update global configuration. Persists by default. */
   updateConfig(partial: Partial<InputConfig>, persist = true): void {
     this._config = mergeConfig(this._config, partial);
+    if (persist) saveSettings(this._config, this.storage);
+    this.emit("configChange", this._config);
+  }
+
+  /** Update configuration for a specific device. Persists by default. */
+  updateDeviceConfig(deviceId: string, partial: DeviceConfig, persist = true): void {
+    const existing = this._config.devices[deviceId] ?? {};
+    this._config = mergeConfig(this._config, {
+      devices: { [deviceId]: { ...existing, ...partial } },
+    });
     if (persist) saveSettings(this._config, this.storage);
     this.emit("configChange", this._config);
   }
@@ -110,10 +153,16 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
 
     connection.on("buttonEvent", (event) => this.emit("buttonEvent", event));
     connection.on("stateChange", (state, proto) => this.emit("stateChange", state, proto));
-    connection.on("deviceStatus", (event, device) => this.emit("deviceStatus", event, device));
+    connection.on("deviceStatus", (event, device) => {
+      if (event === "connected") this.knownDevices.set(device.id, device);
+      else this.knownDevices.delete(device.id);
+      this.emit("deviceStatus", event, device);
+    });
   }
 
   private processSpatialData(raw: SpatialData): SpatialData | null {
+    // TODO: When the bridge includes deviceId in spatial data messages,
+    // resolve per-device config here. For now, use global config.
     const cfg = this._config;
     let data = raw;
 
@@ -124,7 +173,6 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
     data = applyAxisRemap(data, cfg.axisRemap);
     data = applySensitivity(data, cfg.sensitivity);
 
-    // Lock axes
     if (cfg.lockPosition) {
       data = { ...data, translation: { x: 0, y: 0, z: 0 } };
     }
