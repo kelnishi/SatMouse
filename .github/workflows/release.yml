@@ -37,6 +37,7 @@ jobs:
       - name: Bundle
         run: |
           npm run build
+          npm run build:tray
           npm run build:client
 
       - name: Package macOS .app
