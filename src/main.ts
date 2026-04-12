@@ -37,8 +37,6 @@ async function main(): Promise<void> {
   console.log(`SatMouse v${version} — 6DOF Spatial Input Bridge`);
   console.log("──────────────────────────────────────────");
 
-  // 1. Initialize system tray
-  //    which the 3Dconnexion framework requires for event delivery.
   const clientUrl = `http://localhost:${config.wsPort}/client/`;
   const shutdown = () => {
     console.log("\nShutting down...");
@@ -49,11 +47,15 @@ async function main(): Promise<void> {
     process.exit(0);
   };
 
-  const tray = await createTray();
-  tray?.start({
-    onOpenClient: () => openBrowser(clientUrl),
-    onQuit: shutdown,
-  });
+  // Tray is handled by tray-wrapper in .app mode (SATMOUSE_SKIP_TRAY=1).
+  // In dev mode, create tray in-process.
+  if (!process.env.SATMOUSE_SKIP_TRAY) {
+    const tray = await createTray();
+    tray?.start({
+      onOpenClient: () => openBrowser(clientUrl),
+      onQuit: shutdown,
+    });
+  }
 
   // 2. Set up device manager and register plugins
   const deviceManager = new DeviceManager();
