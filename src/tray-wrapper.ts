@@ -41,9 +41,28 @@ function main() {
 
   // Bootstrap NSApp
   const NSApp = msg(cls("NSApplication"), sel("sharedApplication"));
-  msg_l(NSApp, sel("setActivationPolicy:"), 0); // Regular first
+  msg_l(NSApp, sel("setActivationPolicy:"), 0); // Regular
   msg(NSApp, sel("finishLaunching"));
   msg_l(NSApp, sel("activateIgnoringOtherApps:"), 1);
+
+  // Detect App Translocation (running from Downloads or other quarantined location)
+  if (process.execPath.includes("/AppTranslocation/")) {
+    const NSAlert = cls("NSAlert");
+    const alert = msg(msg(NSAlert, sel("alloc")), sel("init"));
+    msg_p(alert, sel("setMessageText:"), str("Move SatMouse to Applications"));
+    msg_p(alert, sel("setInformativeText:"),
+      str("SatMouse cannot run from this location.\n\nPlease move SatMouse.app to /Applications or ~/Applications, then relaunch."));
+    msg_l(alert, sel("setAlertStyle:"), 2); // NSAlertStyleCritical
+    msg_p(alert, sel("addButtonWithTitle:"), str("Quit"));
+    msg(alert, sel("runModal"));
+    // Open ~/Applications in Finder to help the user move the app
+    const home = process.env.HOME ?? "/Users/" + process.env.USER;
+    const appsDir = join(home, "Applications");
+    try { require("node:fs").mkdirSync(appsDir, { recursive: true }); } catch {}
+    execFile("open", [appsDir]);
+    process.exit(1);
+  }
+
   msg_l(NSApp, sel("setActivationPolicy:"), 1); // Then Accessory
 
   // Resolve paths — execPath is Contents/MacOS/satmouse
