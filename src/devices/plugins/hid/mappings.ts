@@ -58,15 +58,46 @@ export interface HIDDeviceMapping {
   buttons: ButtonMapping[];
 }
 
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync, existsSync } from "node:fs";
+import { join, dirname, resolve } from "node:path";
+
+/** Find profiles.json — works in dev (tsx), CJS bundle (.app), and SEA */
+function findProfilesPath(): string | null {
+  const candidates: string[] = [];
+
+  // Dev mode: relative to this source file
+  try {
+    if (typeof __dirname !== "undefined") {
+      candidates.push(join(__dirname, "profiles.json"));
+    }
+  } catch {}
+  try {
+    if (import.meta?.url) {
+      const { fileURLToPath } = require("node:url");
+      candidates.push(join(dirname(fileURLToPath(import.meta.url)), "profiles.json"));
+    }
+  } catch {}
+
+  // CJS bundle in .app: Contents/Resources/profiles.json or alongside main.cjs
+  const execDir = dirname(process.execPath);
+  candidates.push(join(execDir, "..", "Resources", "profiles.json"));
+  candidates.push(join(execDir, "profiles.json"));
+
+  // Project root paths (dev mode)
+  candidates.push(resolve("src/devices/plugins/hid/profiles.json"));
+
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
 
 /** Load profiles from profiles.json, converting hex vendorId/productId strings to numbers */
 function loadProfiles(): HIDDeviceMapping[] {
   try {
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const raw = JSON.parse(readFileSync(join(dir, "profiles.json"), "utf-8"));
+    const path = findProfilesPath();
+    if (!path) throw new Error("profiles.json not found");
+    const raw = JSON.parse(readFileSync(path, "utf-8"));
     return (raw.profiles as any[]).map((p) => ({
       ...p,
       vendorId: typeof p.vendorId === "string" ? parseInt(p.vendorId, 16) : p.vendorId,

@@ -29,6 +29,9 @@ chmod +x "$APP/Contents/Resources/bin/node"
 cp dist/main.js "$APP/Contents/Resources/main.cjs"
 cp dist/tray-wrapper.cjs "$APP/Contents/Resources/tray-wrapper.cjs"
 
+# Copy HID device profiles
+cp src/devices/plugins/hid/profiles.json "$APP/Contents/Resources/profiles.json"
+
 # Compile a native launcher that execs node with the tray wrapper.
 # This is CFBundleExecutable — macOS tracks it for menu bar identity.
 # Fork-based launcher: parent stays alive as the macOS-tracked app process,
