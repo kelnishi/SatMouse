@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { nativeRequire } from "../../../native-require.js";
 import type { DeviceInfo } from "../../types.js";
 import { ConnexionDriver } from "./types.js";
 import type { ConnexionRawEvent } from "./types.js";
@@ -39,7 +40,7 @@ export class MacOSConnexionDriver extends ConnexionDriver {
 
   async connect(): Promise<void> {
     if (this._connected) return;
-    const koffi: any = require("koffi");
+    const koffi: any = nativeRequire("koffi");
 
     // Bootstrap NSApplication
     const objc = koffi.load(OBJC_PATH);

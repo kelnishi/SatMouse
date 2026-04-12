@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { nativeRequire } from "../../../native-require.js";
 import type { DeviceInfo } from "../../types.js";
 import { ConnexionDriver } from "./types.js";
 import type { ConnexionRawEvent } from "./types.js";
@@ -27,7 +28,7 @@ export class WindowsConnexionDriver extends ConnexionDriver {
   }
 
   async connect(): Promise<void> {
-    const koffi: any = require("koffi");
+    const koffi: any = nativeRequire("koffi");
 
     const sdkPath = SDK_PATHS.find((p) => existsSync(p));
     if (!sdkPath) throw new Error("3DxWare SDK not found");
