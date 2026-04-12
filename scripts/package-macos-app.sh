@@ -95,6 +95,10 @@ if [ -d "node_modules/@fails-components" ]; then
   mkdir -p "$APP/Contents/Resources/node_modules/@fails-components"
   cp -R node_modules/@fails-components "$APP/Contents/Resources/node_modules/"
 fi
+if [ -d "node_modules/node-hid" ]; then
+  echo "Bundling node-hid native addon..."
+  cp -R node_modules/node-hid "$APP/Contents/Resources/node_modules/"
+fi
 
 # Copy package.json for version info
 cp package.json "$APP/Contents/Resources/"
