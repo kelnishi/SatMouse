@@ -69,11 +69,17 @@ jobs:
             SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)"/\1/')
             echo "Signing with: $SIGNING_IDENTITY"
 
-            # Sign native addons and Node binary individually
-            find dist/SatMouse.app -name "*.node" -o -name "*.dylib" -o -name "node" | while read f; do
-              echo "Signing: $f"
-              codesign --sign "$SIGNING_IDENTITY" --options runtime --timestamp --force "$f"
+            # Sign only Mach-O binaries (skip non-darwin .node files and non-binary files named "node")
+            find dist/SatMouse.app -type f \( -name "*.node" -o -name "*.dylib" \) | while read f; do
+              if file "$f" | grep -q "Mach-O"; then
+                echo "Signing: $f"
+                codesign --sign "$SIGNING_IDENTITY" --options runtime --timestamp --force "$f"
+              fi
             done
+            # Sign the Node binary in Resources/bin/
+            echo "Signing: dist/SatMouse.app/Contents/Resources/bin/node"
+            codesign --sign "$SIGNING_IDENTITY" --options runtime --timestamp --force \
+              dist/SatMouse.app/Contents/Resources/bin/node
 
             # Sign the .app bundle
             codesign --sign "$SIGNING_IDENTITY" \

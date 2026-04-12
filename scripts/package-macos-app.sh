@@ -35,11 +35,14 @@ LAUNCHER
 chmod +x "$APP/Contents/MacOS/satmouse"
 
 # Copy native addon node_modules into Resources
-# These can't be embedded in the SEA blob — they must ship alongside
 if [ -d "node_modules/koffi" ]; then
   echo "Bundling koffi native addon..."
   mkdir -p "$APP/Contents/Resources/node_modules"
   cp -R node_modules/koffi "$APP/Contents/Resources/node_modules/"
+  # Remove non-darwin platform binaries to reduce size
+  find "$APP/Contents/Resources/node_modules/koffi/build" -type d \
+    ! -name "darwin_arm64" ! -name "darwin_x64" ! -name "koffi" ! -name "build" \
+    -mindepth 2 -exec rm -rf {} + 2>/dev/null || true
 fi
 
 if [ -d "node_modules/@fails-components" ]; then
