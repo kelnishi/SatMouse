@@ -72,23 +72,54 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           bash scripts/package-macos-app.sh dist/satmouse
-          # Code sign the .app bundle
+
           if [ -n "${APPLE_CERTIFICATE:-}" ]; then
-            echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
+            # Import certificate into a temporary keychain
             KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-            security create-keychain -p "" "$KEYCHAIN_PATH"
+            KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
             security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-            security unlock-keychain -p "" "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            echo "$APPLE_CERTIFICATE" | base64 --decode > cert.p12
             security import cert.p12 -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
             security list-keychain -d user -s "$KEYCHAIN_PATH"
-            codesign --sign "Developer ID Application" --options runtime --deep dist/SatMouse.app
             rm cert.p12
+
+            # Sign with hardened runtime + entitlements
+            codesign --sign "Developer ID Application: ${APPLE_TEAM_ID}" \
+              --options runtime \
+              --entitlements scripts/entitlements.plist \
+              --force --deep --timestamp \
+              dist/SatMouse.app
+
+            cd dist && zip -r ../SatMouse-macOS-${{ matrix.arch }}.zip SatMouse.app && cd ..
+
+            # Notarize with Apple
+            if [ -n "${APPLE_ID:-}" ]; then
+              xcrun notarytool submit SatMouse-macOS-${{ matrix.arch }}.zip \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_APP_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" \
+                --wait --timeout 10m
+
+              # Staple the notarization ticket
+              xcrun stapler staple dist/SatMouse.app
+
+              # Re-zip with stapled ticket
+              rm -f SatMouse-macOS-${{ matrix.arch }}.zip
+              cd dist && zip -r ../SatMouse-macOS-${{ matrix.arch }}.zip SatMouse.app
+            fi
+
+            security delete-keychain "$KEYCHAIN_PATH"
           else
             codesign --sign - --deep dist/SatMouse.app
+            cd dist && zip -r ../SatMouse-macOS-${{ matrix.arch }}.zip SatMouse.app
           fi
-          cd dist && zip -r ../SatMouse-macOS-${{ matrix.arch }}.zip SatMouse.app
 
       - name: Package Linux
         if: matrix.platform == 'linux'
