@@ -32,7 +32,8 @@ async function main(): Promise<void> {
   const version = getVersion();
 
   // Bootstrap NSApplication before anything else on macOS
-  if (!noDevice) ensureNSApp();
+  // Required for both tray icon and 3Dconnexion framework
+  if (process.platform === "darwin" && !isChildProcess) ensureNSApp();
 
   // Generate TLS certs if missing (for WebTransport)
   ensureCerts(config.certsDir);
@@ -50,18 +51,29 @@ async function main(): Promise<void> {
     process.exit(0);
   };
 
+  // Device manager
+  const deviceManager = new DeviceManager();
+  deviceManager.on("error", (err) => {
+    console.error(`[DeviceManager] ${err.message}`);
+  });
+
   // Tray: child process skips (tray-wrapper handles it).
   // Dev mode creates tray in-process.
   if (!isChildProcess) {
     const tray = await createTray();
     tray?.start({
       onOpenClient: () => openBrowser(clientUrl),
+      onRescanDevices: async () => {
+        console.log("[DeviceManager] Rescanning devices...");
+        await deviceManager.rescan(
+          config.enabledPlugins.length ? config.enabledPlugins : undefined
+        );
+        const devices = deviceManager.getConnectedDevices();
+        console.log(`[DeviceManager] Devices: ${devices.length ? devices.map((d) => d.name).join(", ") : "(none)"}`);
+      },
       onQuit: shutdown,
     });
   }
-
-  // Device manager
-  const deviceManager = new DeviceManager();
 
   if (!noDevice) {
     deviceManager.registerPlugin(new SpaceMousePlugin());

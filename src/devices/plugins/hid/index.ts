@@ -16,6 +16,7 @@ export class HIDPlugin extends DevicePlugin {
   readonly id = "hid";
   readonly name = "Generic HID / Gamepad";
   readonly supportedPlatforms: NodeJS.Platform[] = ["darwin", "win32", "linux"];
+  override readonly supportsRescan = true;
 
   private customMappings: HIDDeviceMapping[] = [];
   private devices: DeviceInfo[] = [];
@@ -61,6 +62,9 @@ export class HIDPlugin extends DevicePlugin {
           vendorId: dev.vendorId,
           productId: dev.productId,
           connectionType: "usb",
+          axes: mapping.axes.map((a) => a.target),
+          axisLabels: mapping.axes.map((a) => a.label ?? a.target.toUpperCase()),
+          buttonCount: mapping.buttons.length,
         };
         this.devices.push(info);
         this.emit("deviceConnected", info);
@@ -76,7 +80,14 @@ export class HIDPlugin extends DevicePlugin {
         });
 
         this.hidDevice.on("error", (err: Error) => {
-          this.emit("error", err);
+          console.log(`[HID] Device error (${mapping.name}): ${err.message}`);
+          try { this.hidDevice?.close(); } catch {}
+          this.hidDevice = null;
+          const idx = this.devices.findIndex((d) => d.id === deviceId);
+          if (idx !== -1) {
+            const removed = this.devices.splice(idx, 1)[0];
+            this.emit("deviceDisconnected", removed);
+          }
         });
 
         break;
@@ -112,14 +123,16 @@ export class HIDPlugin extends DevicePlugin {
     const timestamp = performance.now() * 1000;
     const offset = mapping.axisOffset ?? 0;
 
-    // Read raw axes based on format
+    // Read enough raw bytes to cover the highest sourceAxis in the mapping
+    const maxAxis = mapping.axes.reduce((m, a) => Math.max(m, a.sourceAxis), 0);
+    const axisCount = maxAxis + 1;
     const rawAxes: number[] = [];
     if (mapping.axisFormat === "uint8") {
-      for (let i = 0; i < 8 && offset + i < report.length; i++) {
+      for (let i = 0; i < axisCount && offset + i < report.length; i++) {
         rawAxes.push(report[offset + i]);
       }
     } else {
-      for (let i = 0; i < 8 && offset + i * 2 + 1 < report.length; i++) {
+      for (let i = 0; i < axisCount && offset + i * 2 + 1 < report.length; i++) {
         rawAxes.push(report.readInt16LE(offset + i * 2));
       }
     }
@@ -136,9 +149,18 @@ export class HIDPlugin extends DevicePlugin {
     for (const am of mapping.axes) {
       if (am.sourceAxis >= rawAxes.length) continue;
 
-      // Normalize to -1.0 .. 1.0
+      // Parse target: "tx", "tz+", "tz-"
+      const isHalfPos = am.target.endsWith("+");
+      const isHalfNeg = am.target.endsWith("-");
+      const isHalf = isHalfPos || isHalfNeg;
+      const isUnipolar = am.unipolar ?? isHalf;
+
+      // Normalize to -1.0 .. 1.0 (bipolar) or 0.0 .. 1.0 (unipolar)
       let normalized: number;
-      if (mapping.axisFormat === "uint8") {
+      if (isUnipolar) {
+        const max = mapping.axisFormat === "uint8" ? 255 : 32767;
+        normalized = rawAxes[am.sourceAxis] / max;
+      } else if (mapping.axisFormat === "uint8") {
         normalized = (rawAxes[am.sourceAxis] - 128) / 127;
       } else {
         normalized = rawAxes[am.sourceAxis] / 32767;
@@ -150,13 +172,17 @@ export class HIDPlugin extends DevicePlugin {
 
       if (am.invert) normalized = -normalized;
 
+      // Half-axis: positive half contributes positive, negative half contributes negative
+      if (isHalfNeg) normalized = -normalized;
+
       // Scale to SpaceMouse-equivalent range (default 350)
       const value = normalized * (am.scale ?? 350);
       if (value !== 0) hasNonZero = true;
 
-      const [group, axis] = [am.target[0], am.target[1]] as ["t" | "r", "x" | "y" | "z"];
-      if (group === "t") spatial.translation[axis] = value;
-      else spatial.rotation[axis] = value;
+      const baseTarget = am.target.replace(/[+-]$/, "");
+      const [group, axis] = [baseTarget[0], baseTarget[1]] as ["t" | "r", "x" | "y" | "z"];
+      if (group === "t") spatial.translation[axis] += value;
+      else spatial.rotation[axis] += value;
     }
 
     // Only emit when there's actual input
@@ -166,9 +192,11 @@ export class HIDPlugin extends DevicePlugin {
 
     // Buttons
     const btnOffset = mapping.buttonOffset ?? (offset + (mapping.axisFormat === "uint8" ? rawAxes.length : rawAxes.length * 2));
-    if (report.length > btnOffset) {
+    const maxBtn = mapping.buttons.reduce((m, b) => Math.max(m, b.sourceButton), -1);
+    const btnBytes = maxBtn >= 0 ? Math.ceil((maxBtn + 1) / 8) : 0;
+    if (btnBytes > 0 && report.length > btnOffset) {
       let buttons = 0;
-      for (let i = btnOffset; i < Math.min(report.length, btnOffset + 4); i++) {
+      for (let i = btnOffset; i < Math.min(report.length, btnOffset + btnBytes); i++) {
         buttons |= report[i] << ((i - btnOffset) * 8);
       }
       if (buttons !== prevButtons) {

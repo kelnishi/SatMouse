@@ -1,10 +1,8 @@
 import { onManagerReady } from "./registry.js";
 import type { InputManager } from "../utils/input-manager.js";
 import type { DeviceInfo } from "../core/types.js";
-import type { InputAxis } from "../utils/action-map.js";
-import { DEFAULT_ACTION_MAP } from "../utils/action-map.js";
-
-const AXES: InputAxis[] = ["tx", "ty", "tz", "rx", "ry", "rz"];
+import type { InputAxis, AxisRoute } from "../utils/action-map.js";
+import { FULL_AXES, buildRoutes, DEFAULT_ROUTES } from "../utils/action-map.js";
 
 const STYLES = `
 <style>
@@ -17,16 +15,16 @@ const STYLES = `
   .slider-row label { color: #7f8c8d; font-weight: 600; width: 38px; flex-shrink: 0; }
   .slider-row input[type="range"] { flex: 1; min-width: 0; height: 4px; accent-color: #3498db; }
   .slider-row span { color: #7f8c8d; font-family: monospace; font-size: 10px; min-width: 44px; text-align: right; }
-  .flip-group { display: flex; flex-direction: column; gap: 4px; }
-  .flip-row { display: flex; gap: 8px; }
-  .flip-row label { display: flex; align-items: center; gap: 2px; color: #7f8c8d; min-width: 36px; }
-  .flip-row input { accent-color: #e74c3c; }
-  .remap-group { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; }
-  .remap-row { display: flex; gap: 4px; align-items: center; }
-  .remap-row label { color: #7f8c8d; width: 24px; flex-shrink: 0; }
-  .remap-row select { background: #16213e; color: #e0e0e0; border: 1px solid #1a4a8a; border-radius: 3px;
-                       font-size: 11px; padding: 1px 4px; flex: 1; min-width: 0; }
+  .route-group { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .route-row { display: flex; gap: 4px; align-items: center; }
+  .route-row label { color: #7f8c8d; white-space: nowrap; }
+  .route-row select { background: #16213e; color: #e0e0e0; border: 1px solid #1a4a8a; border-radius: 3px;
+                      font-size: 11px; padding: 1px 4px; }
+  .route-row input[type="checkbox"] { accent-color: #e74c3c; margin: 0; }
   .empty { color: #7f8c8d; font-style: italic; }
+  .reset-btn { background: none; border: 1px solid #1a4a8a; border-radius: 3px; color: #7f8c8d;
+               font-size: 11px; padding: 3px 8px; cursor: pointer; margin-top: 4px; }
+  .reset-btn:hover { color: #e0e0e0; border-color: #e74c3c; }
 </style>
 `;
 
@@ -60,12 +58,13 @@ export class SatMouseDevices extends HTMLElement {
   }
 
   private addDevice(device: DeviceInfo): void {
-    if (this.shadowRoot!.getElementById(`dev-${device.id}`)) return;
+    const existing = this.shadowRoot!.getElementById(`dev-${device.id}`);
+    if (existing) {
+      this.refreshControls(existing as HTMLDetailsElement, device);
+      return;
+    }
     const empty = this.container.querySelector(".empty");
     if (empty) empty.remove();
-
-    const mgr = this.manager!;
-    const cfg = mgr.getDeviceConfig(device.id);
 
     const panel = document.createElement("details");
     panel.className = "panel";
@@ -76,81 +75,115 @@ export class SatMouseDevices extends HTMLElement {
     summary.innerHTML = `${device.model ?? device.name}<span class="type">${device.connectionType ?? ""}</span>`;
     panel.appendChild(summary);
 
+    this.refreshControls(panel, device);
+    this.container.appendChild(panel);
+  }
+
+  private refreshControls(panel: HTMLDetailsElement, device: DeviceInfo): void {
+    const old = panel.querySelector(".controls");
+    if (old) old.remove();
+
+    const mgr = this.manager!;
+    const cfg = mgr.getDeviceConfig(device.id);
+
     const controls = document.createElement("div");
     controls.className = "controls";
 
-    // Sensitivity sliders
-    for (const type of ["translation", "rotation"] as const) {
+    // Axis routes — one row per device input: [flip] [label] → [target dropdown] [scale slider]
+    const routeGroup = document.createElement("div");
+    routeGroup.className = "route-group";
+    const deviceAxes = device.axes ?? ["tx", "ty", "tz", "rx", "ry", "rz"];
+    const routes = this.getRoutes(device.id, deviceAxes);
+
+    for (let i = 0; i < deviceAxes.length; i++) {
+      const route = routes[i] ?? { source: deviceAxes[i] as InputAxis, target: deviceAxes[i].replace(/[+-]$/, "") as InputAxis };
       const row = document.createElement("div");
-      row.className = "slider-row";
-      const val = cfg.sensitivity?.[type] ?? mgr.config.sensitivity[type];
-      row.innerHTML = `<label>${type === "translation" ? "Trans" : "Rot"}</label>` +
-        `<input type="range" min="0" max="100" value="${Math.round(unmapSlider(val))}">` +
-        `<span>${val.toFixed(4)}</span>`;
-      const slider = row.querySelector("input")! as HTMLInputElement;
-      const span = row.querySelector("span")!;
-      slider.addEventListener("input", () => {
-        const v = mapSlider(+slider.value);
-        span.textContent = v.toFixed(4);
-        mgr.updateDeviceConfig(device.id, {
-          sensitivity: { ...mgr.getDeviceConfig(device.id).sensitivity, [type]: v },
-        });
+      row.className = "route-row";
+
+      // Flip checkbox
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = route.flip ?? false;
+      cb.title = "Flip";
+      const routeIndex = i;
+      cb.addEventListener("change", () => {
+        this.updateRoute(device.id, routeIndex, deviceAxes, { flip: cb.checked });
       });
-      controls.appendChild(row);
-    }
+      row.appendChild(cb);
 
-    // Flip checkboxes
-    const flipGroup = document.createElement("div");
-    flipGroup.className = "flip-group";
-    for (const group of [["tx", "ty", "tz"], ["rx", "ry", "rz"]] as InputAxis[][]) {
-      const row = document.createElement("div");
-      row.className = "flip-row";
-      for (const axis of group) {
-        const label = document.createElement("label");
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = cfg.flip?.[axis] ?? mgr.config.flip[axis];
-        cb.addEventListener("change", () => {
-          mgr.updateDeviceConfig(device.id, {
-            flip: { ...mgr.getDeviceConfig(device.id).flip, [axis]: cb.checked },
-          });
-        });
-        label.appendChild(cb);
-        label.appendChild(document.createTextNode(axis.toUpperCase()));
-        row.appendChild(label);
-      }
-      flipGroup.appendChild(row);
-    }
-    controls.appendChild(flipGroup);
+      // Label (device input name)
+      const label = document.createElement("label");
+      label.textContent = device.axisLabels?.[i] ?? deviceAxes[i].toUpperCase();
+      row.appendChild(label);
 
-    // Axis remap
-    const remapGroup = document.createElement("div");
-    remapGroup.className = "remap-group";
-    const actionMap = cfg.actionMap ?? mgr.config.actionMap;
-    for (const action of AXES) {
-      const row = document.createElement("div");
-      row.className = "remap-row";
-      row.innerHTML = `<label>${action.toUpperCase()}</label>`;
+      // Target dropdown
       const sel = document.createElement("select");
-      for (const src of AXES) {
+      for (const target of FULL_AXES) {
         const opt = document.createElement("option");
-        opt.value = src;
-        opt.textContent = src.toUpperCase();
-        if (actionMap[action]?.source === src) opt.selected = true;
+        opt.value = target;
+        opt.textContent = target.toUpperCase();
+        if (target === route.target) opt.selected = true;
         sel.appendChild(opt);
       }
       sel.addEventListener("change", () => {
-        const current = mgr.getDeviceConfig(device.id).actionMap ?? { ...DEFAULT_ACTION_MAP };
-        current[action] = { ...current[action], source: sel.value as InputAxis };
-        mgr.updateDeviceConfig(device.id, { actionMap: current });
+        this.updateRoute(device.id, routeIndex, deviceAxes, { target: sel.value as InputAxis });
       });
       row.appendChild(sel);
-      remapGroup.appendChild(row);
+
+      routeGroup.appendChild(row);
     }
-    controls.appendChild(remapGroup);
+    controls.appendChild(routeGroup);
+
+    // Scale slider
+    const sensRow = document.createElement("div");
+    sensRow.className = "slider-row";
+    const currentScale = cfg.scale ?? mgr.config.scale;
+    sensRow.innerHTML = `<label>Scale</label>` +
+      `<input type="range" min="0" max="100" value="${Math.round(unmapSlider(currentScale))}">` +
+      `<span>${currentScale.toFixed(4)}</span>`;
+    const slider = sensRow.querySelector("input")! as HTMLInputElement;
+    const span = sensRow.querySelector("span")!;
+    slider.addEventListener("input", () => {
+      const v = mapSlider(+slider.value);
+      span.textContent = v.toFixed(4);
+      mgr.updateDeviceConfig(device.id, { scale: v });
+    });
+    controls.appendChild(sensRow);
+
+    // Reset button
+    const resetBtn = document.createElement("button");
+    resetBtn.className = "reset-btn";
+    resetBtn.textContent = "Restore Defaults";
+    resetBtn.addEventListener("click", () => {
+      mgr.resetDeviceConfig(device.id);
+      this.refreshControls(panel, device);
+    });
+    controls.appendChild(resetBtn);
 
     panel.appendChild(controls);
-    this.container.appendChild(panel);
+  }
+
+  private getRoutes(deviceId: string, deviceAxes: string[]): AxisRoute[] {
+    // Only use saved device config routes — not the global fallback
+    const mgr = this.manager!;
+    const devCfg = mgr.config.devices[deviceId];
+    if (devCfg?.routes && Array.isArray(devCfg.routes)) return devCfg.routes;
+
+    // Check pattern matches
+    for (const [pattern, cfg] of Object.entries(mgr.config.devices)) {
+      if (pattern.endsWith("*") && deviceId.startsWith(pattern.slice(0, -1))) {
+        if (cfg.routes && Array.isArray(cfg.routes)) return cfg.routes;
+      }
+    }
+
+    // Build from device axes
+    return buildRoutes(deviceAxes);
+  }
+
+  private updateRoute(deviceId: string, index: number, deviceAxes: string[], patch: Partial<AxisRoute>): void {
+    const base = this.getRoutes(deviceId, deviceAxes);
+    const updated = base.map((r, j) => j === index ? { ...r, ...patch } : { ...r });
+    this.manager!.updateDeviceConfig(deviceId, { routes: updated });
   }
 
   private removeDevice(device: DeviceInfo): void {

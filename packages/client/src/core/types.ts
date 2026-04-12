@@ -30,6 +30,12 @@ export interface DeviceInfo {
   productId?: number;
   connectionType?: "usb" | "wireless" | "bluetooth" | "unknown";
   connected?: boolean;
+  /** Axes this device provides (e.g., ["tx","ty","tz","rx","ry","rz"] or ["tx","ty","rx","ry","tz+","rz+"]) */
+  axes?: string[];
+  /** Human-readable labels for axes (same order as axes array) */
+  axisLabels?: string[];
+  /** Number of buttons this device provides */
+  buttonCount?: number;
 }
 
 export type ConnectionState = "disconnected" | "connecting" | "connected" | "failed";

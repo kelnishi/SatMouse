@@ -1,93 +1,79 @@
 import type { SpatialData } from "../core/types.js";
 
-/** Input axis identifier */
-export type InputAxis = "tx" | "ty" | "tz" | "rx" | "ry" | "rz";
+/** Axis identifier — full or half */
+export type InputAxis =
+  | "tx" | "ty" | "tz" | "rx" | "ry" | "rz"
+  | "tx+" | "ty+" | "tz+" | "rx+" | "ry+" | "rz+"
+  | "tx-" | "ty-" | "tz-" | "rx-" | "ry-" | "rz-";
 
-/** A single action binding — maps one input axis to a named output */
-export interface ActionBinding {
-  /** Which input axis drives this action */
+/** The 6 full output axes */
+export const FULL_AXES: InputAxis[] = ["tx", "ty", "tz", "rx", "ry", "rz"];
+
+/** A single axis route — reads from source, writes to target */
+export interface AxisRoute {
   source: InputAxis;
-  /** Scale multiplier (default: 1) */
-  scale?: number;
-  /** Invert the value (default: false) */
-  invert?: boolean;
+  target: InputAxis;
+  /** Negate the value (default: false) */
+  flip?: boolean;
 }
 
-/**
- * ActionMap defines how raw 6DOF axes map to named output actions.
- *
- * Client apps declare the actions they support and how device axes
- * feed into them. Users can reassign axes via the settings UI.
- *
- * Default: 6 actions matching the 6 input axes (passthrough).
- */
-export type ActionMap = Record<string, ActionBinding>;
+/** Default 6DOF passthrough */
+export const DEFAULT_ROUTES: AxisRoute[] = [
+  { source: "tx", target: "tx" },
+  { source: "ty", target: "ty" },
+  { source: "tz", target: "tz" },
+  { source: "rx", target: "rx" },
+  { source: "ry", target: "ry" },
+  { source: "rz", target: "rz" },
+];
 
-/** Default passthrough — each axis maps to itself */
-export const DEFAULT_ACTION_MAP: ActionMap = {
-  tx: { source: "tx" },
-  ty: { source: "ty" },
-  tz: { source: "tz" },
-  rx: { source: "rx" },
-  ry: { source: "ry" },
-  rz: { source: "rz" },
-};
+/** Build passthrough routes from a device's axis list. Half-axes target their base axis.
+ *  Negative half-axes (e.g., "ty-") get flip: true. */
+export function buildRoutes(axes: string[]): AxisRoute[] {
+  return axes.map((axis) => {
+    const base = axis.replace(/[+-]$/, "");
+    const flip = axis.endsWith("-");
+    return { source: axis as InputAxis, target: base as InputAxis, ...(flip && { flip: true }) };
+  });
+}
 
-/** Result of applying an ActionMap to spatial data */
-export type ActionValues = Record<string, number>;
-
-/** Read a raw axis value from SpatialData */
+/** Read a value from SpatialData by axis name. Half-axes read the same as the full axis. */
 function readAxis(data: SpatialData, axis: InputAxis): number {
-  switch (axis) {
+  const base = axis.replace(/[+-]$/, "");
+  switch (base) {
     case "tx": return data.translation.x;
     case "ty": return data.translation.y;
     case "tz": return data.translation.z;
     case "rx": return data.rotation.x;
     case "ry": return data.rotation.y;
     case "rz": return data.rotation.z;
+    default: return 0;
   }
 }
 
-/** Apply an ActionMap to SpatialData, producing named action values */
-export function applyActionMap(data: SpatialData, map: ActionMap): ActionValues {
-  const result: ActionValues = {};
-  for (const [action, binding] of Object.entries(map)) {
-    let value = readAxis(data, binding.source);
-    if (binding.invert) value = -value;
-    value *= binding.scale ?? 1;
-    result[action] = value;
-  }
-  return result;
+/** Write a value to accumulators. Half-axis targets: "tz+" adds, "tz-" subtracts. */
+function writeAxis(t: { x: number; y: number; z: number }, r: { x: number; y: number; z: number }, axis: InputAxis, value: number): void {
+  const isNeg = axis.endsWith("-");
+  const base = axis.replace(/[+-]$/, "");
+  const sign = isNeg ? -1 : 1;
+  const group = base[0] as "t" | "r";
+  const key = base[1] as "x" | "y" | "z";
+  if (group === "t") t[key] += value * sign;
+  else r[key] += value * sign;
 }
 
-/**
- * Convert ActionValues back to SpatialData.
- * Only populates tx/ty/tz/rx/ry/rz keys if they exist as actions.
- */
-export function actionValuesToSpatialData(values: ActionValues, timestamp: number): SpatialData {
-  return {
-    translation: {
-      x: values.tx ?? 0,
-      y: values.ty ?? 0,
-      z: values.tz ?? 0,
-    },
-    rotation: {
-      x: values.rx ?? 0,
-      y: values.ry ?? 0,
-      z: values.rz ?? 0,
-    },
-    timestamp,
-  };
-}
+/** Apply routes to SpatialData. Multiple routes targeting the same axis accumulate.
+ *  @param scale — global scale multiplier applied to all routes */
+export function applyRoutes(data: SpatialData, routes: AxisRoute[], scale = 1): SpatialData {
+  const t = { x: 0, y: 0, z: 0 };
+  const r = { x: 0, y: 0, z: 0 };
 
-/** Swap two action bindings */
-export function swapActions(map: ActionMap, actionA: string, actionB: string): ActionMap {
-  const result = { ...map };
-  const a = result[actionA];
-  const b = result[actionB];
-  if (a && b) {
-    result[actionA] = b;
-    result[actionB] = a;
+  for (const route of routes) {
+    let value = readAxis(data, route.source);
+    if (route.flip) value = -value;
+    value *= scale;
+    writeAxis(t, r, route.target, value);
   }
-  return result;
+
+  return { translation: t, rotation: r, timestamp: data.timestamp, deviceId: data.deviceId };
 }

@@ -61,12 +61,17 @@ export class MacOSTray implements Tray {
       () => { actions.onOpenClient(); },
       koffi.pointer(ActionProto)
     );
+    const rescanCb = koffi.register(
+      () => { actions.onRescanDevices(); },
+      koffi.pointer(ActionProto)
+    );
     const quitCb = koffi.register(
       () => { actions.onQuit(); },
       koffi.pointer(ActionProto)
     );
 
     class_addMethod(TargetClass, sel("openClient:"), openClientCb, "v@:@");
+    class_addMethod(TargetClass, sel("rescanDevices:"), rescanCb, "v@:@");
     class_addMethod(TargetClass, sel("quitApp:"), quitCb, "v@:@");
     objc_registerClassPair(TargetClass);
 
@@ -88,6 +93,17 @@ export class MacOSTray implements Tray {
     );
     msg_p(openItem, sel("setTarget:"), target);
     msg_p(menu, sel("addItem:"), openItem);
+
+    // "Rescan Devices" item
+    const rescanItem = msg_ppp(
+      msg(NSMenuItem, sel("alloc")),
+      sel("initWithTitle:action:keyEquivalent:"),
+      str("Rescan Devices"),
+      sel("rescanDevices:"),
+      str("")
+    );
+    msg_p(rescanItem, sel("setTarget:"), target);
+    msg_p(menu, sel("addItem:"), rescanItem);
 
     // Separator
     msg_p(menu, sel("addItem:"), msg(NSMenuItem, sel("separatorItem")));
@@ -139,7 +155,7 @@ export class MacOSTray implements Tray {
     }, 16); // ~60 Hz — smooth menu interaction
 
     // Keep references to prevent GC
-    this.callbackHandles = [openClientCb, quitCb, statusItem, target, menu, NSApp];
+    this.callbackHandles = [openClientCb, rescanCb, quitCb, statusItem, target, menu, NSApp];
 
     console.log("[Tray] Menu bar item active");
   }

@@ -33,6 +33,8 @@ export class MacOSConnexionDriver extends ConnexionDriver {
   private fnUnregister: ((id: number) => void) | null = null;
   private fnCleanup: (() => void) | null = null;
   private callbackHandles: any[] = [];
+  /** Most recently added device's product ID (used to tag spatial events) */
+  private activeProductId = 0;
 
   probe(): boolean {
     return existsSync(FRAMEWORK_PATH);
@@ -77,7 +79,7 @@ export class MacOSConnexionDriver extends ConnexionDriver {
             buf.readInt16LE(OFF_AXIS + 6), buf.readInt16LE(OFF_AXIS + 8), buf.readInt16LE(OFF_AXIS + 10),
           ],
           buttons: buf.readUInt32LE(OFF_BUTTONS),
-          productId: _pid,
+          productId: this.activeProductId,
         };
         this.emit("rawEvent", event);
       },
@@ -86,6 +88,7 @@ export class MacOSConnexionDriver extends ConnexionDriver {
 
     const addCb = koffi.register(
       (productId: number) => {
+        this.activeProductId = productId;
         const deviceId = `cnx-${productId.toString(16)}`;
         const info = buildDeviceInfo(productId, deviceId);
         this.devices.push(info);
