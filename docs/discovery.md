@@ -15,18 +15,18 @@ needed for clients on the same local network.
          │  1. Browse _wot._tcp via mDNS        │
          │ ◄────────────────────────────────────│ mDNS broadcast
          │                                      │
-         │  2. Resolve → 192.168.1.42:4444      │
+         │  2. Resolve → 192.168.1.42:18945      │
          │      TXT: td=/td.json                │
          │                                      │
-         │  3. GET http://192.168.1.42:4444/td.json
+         │  3. GET http://192.168.1.42:18945/td.json
          │ ────────────────────────────────────►│
          │                                      │
          │  4. 200 OK (Thing Description)       │
          │ ◄────────────────────────────────────│
          │                                      │
          │  5. Parse TD, read event forms       │
-         │     → WebTransport: https://:4443    │
-         │     → WebSocket:    ws://:4444       │
+         │     → WebTransport: https://:18946    │
+         │     → WebSocket:    ws://:18945       │
          │                                      │
          │  6a. new WebTransport(url, {         │
          │        serverCertificateHashes: [...] │
@@ -69,7 +69,7 @@ records pointing to the Thing Description path.
 
 ```
 GET /td.json HTTP/1.1
-Host: 192.168.1.42:4444
+Host: 192.168.1.42:18945
 Accept: application/td+json
 ```
 
@@ -86,7 +86,7 @@ specifies a protocol (`subprotocol` field) and endpoint (`href`):
 
 ```json
 {
-  "href": "https://192.168.1.42:4443",
+  "href": "https://192.168.1.42:18946",
   "subprotocol": "webtransport",
   "contentType": "application/octet-stream"
 }
