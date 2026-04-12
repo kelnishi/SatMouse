@@ -1,4 +1,5 @@
 import { DevicePlugin, type DeviceInfo, type SpatialData } from "../../types.js";
+import { nativeRequire } from "../../../native-require.js";
 import { findMapping, type HIDDeviceMapping, type AxisMapping } from "./mappings.js";
 
 export { BUILTIN_MAPPINGS, findMapping } from "./mappings.js";
@@ -27,18 +28,16 @@ export class HIDPlugin extends DevicePlugin {
   }
 
   async isAvailable(): Promise<boolean> {
-    // Check for node-hid availability
     try {
-      const nodeHid = await import("node-hid" as any);
-      return typeof nodeHid.devices === "function" || typeof nodeHid.default?.devices === "function";
+      const nodeHid = nativeRequire("node-hid");
+      return typeof nodeHid.devices === "function";
     } catch {
       return false;
     }
   }
 
   async connect(): Promise<void> {
-    const nodeHid = await import("node-hid" as any);
-    const HID = nodeHid.default ?? nodeHid;
+    const HID = nativeRequire("node-hid");
 
     // Enumerate HID devices and find ones we have mappings for
     const hidDevices = HID.devices() as Array<{
