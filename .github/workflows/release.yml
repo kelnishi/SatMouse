@@ -16,15 +16,12 @@ jobs:
           - os: macos-latest
             platform: darwin
             arch: arm64
-            ext: ""
           - os: ubuntu-latest
             platform: linux
             arch: x64
-            ext: ""
           - os: windows-latest
             platform: win32
             arch: x64
-            ext: ".exe"
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -38,33 +35,9 @@ jobs:
       - run: npm ci
 
       - name: Bundle
-        run: npm run build
-
-      - name: Build SEA blob
-        run: node --experimental-sea-config sea-config.json
-
-      - name: Create SEA binary (Unix)
-        if: runner.os != 'Windows'
         run: |
-          cp "$(command -v node)" "dist/satmouse${{ matrix.ext }}"
-          chmod u+w "dist/satmouse${{ matrix.ext }}"
-          if [[ "${{ matrix.platform }}" == "darwin" ]]; then
-            codesign --remove-signature "dist/satmouse" || true
-            npx postject "dist/satmouse" NODE_SEA_BLOB dist/satmouse.blob \
-              --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2 \
-              --macho-segment-name NODE_SEA
-          else
-            npx postject "dist/satmouse" NODE_SEA_BLOB dist/satmouse.blob \
-              --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
-          fi
-
-      - name: Create SEA binary (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Copy-Item (Get-Command node).Source "dist/satmouse.exe"
-          npx postject "dist/satmouse.exe" NODE_SEA_BLOB dist/satmouse.blob `
-            --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+          npm run build
+          npm run build:client
 
       - name: Package macOS .app
         if: matrix.platform == 'darwin'
@@ -76,10 +49,10 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          bash scripts/package-macos-app.sh dist/satmouse
+          # Package .app with the Node binary (not SEA)
+          bash scripts/package-macos-app.sh "$(command -v node)"
 
           if [ -n "${APPLE_CERTIFICATE:-}" ]; then
-            # Import certificate into a temporary keychain
             KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
             KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
             security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -93,13 +66,12 @@ jobs:
             security list-keychain -d user -s "$KEYCHAIN_PATH"
             rm cert.p12
 
-            # Find the signing identity from the imported certificate
             SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)"/\1/')
             echo "Signing with: $SIGNING_IDENTITY"
 
-            # Sign all native addons (.node, .dylib) individually first
-            find dist/SatMouse.app -name "*.node" -o -name "*.dylib" | while read f; do
-              echo "Signing native addon: $f"
+            # Sign native addons and Node binary individually
+            find dist/SatMouse.app -name "*.node" -o -name "*.dylib" -o -name "node" | while read f; do
+              echo "Signing: $f"
               codesign --sign "$SIGNING_IDENTITY" --options runtime --timestamp --force "$f"
             done
 
@@ -112,7 +84,7 @@ jobs:
 
             cd dist && zip -r ../SatMouse-macOS-${{ matrix.arch }}.zip SatMouse.app && cd ..
 
-            # Notarize with Apple
+            # Notarize
             if [ -n "${APPLE_ID:-}" ]; then
               xcrun notarytool submit SatMouse-macOS-${{ matrix.arch }}.zip \
                 --apple-id "$APPLE_ID" \
@@ -120,10 +92,7 @@ jobs:
                 --team-id "$APPLE_TEAM_ID" \
                 --wait --timeout 10m
 
-              # Staple the notarization ticket
               xcrun stapler staple dist/SatMouse.app
-
-              # Re-zip with stapled ticket
               rm -f SatMouse-macOS-${{ matrix.arch }}.zip
               cd dist && zip -r ../SatMouse-macOS-${{ matrix.arch }}.zip SatMouse.app
             fi
@@ -137,14 +106,19 @@ jobs:
       - name: Package Linux
         if: matrix.platform == 'linux'
         run: |
+          cp "$(command -v node)" dist/node
+          cp dist/main.js dist/main.cjs
           cd dist
-          tar czf ../satmouse-linux-${{ matrix.arch }}.tar.gz satmouse
+          tar czf ../satmouse-linux-${{ matrix.arch }}.tar.gz node main.cjs
 
       - name: Package Windows
         if: matrix.platform == 'win32'
         run: |
+          Copy-Item (Get-Command node).Source "dist/node.exe"
+          Copy-Item "dist/main.js" "dist/main.cjs"
           cd dist
-          tar czf ../satmouse-win32-${{ matrix.arch }}.tar.gz satmouse.exe
+          tar czf ../satmouse-win32-${{ matrix.arch }}.tar.gz node.exe main.cjs
+        shell: pwsh
 
       - name: Upload release asset (macOS)
         if: matrix.platform == 'darwin'
