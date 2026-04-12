@@ -11,7 +11,8 @@ npx esbuild src/main.ts \
   --format=esm \
   --outfile=dist/main.js \
   --external:koffi \
-  --external:@fails-components/webtransport
+  --external:@fails-components/webtransport \
+  --external:node-hid
 
 # 2. Generate SEA blob
 echo "Generating SEA blob..."
