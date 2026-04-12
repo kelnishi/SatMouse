@@ -103,12 +103,27 @@ export class TDServer {
         td.properties.deviceInfo.forms[0].href = `${baseHttp}/api/device`;
       }
       if (td.events?.spatialData?.forms) {
-        td.events.spatialData.forms[0].href = baseWt;
-        td.events.spatialData.forms[1].href = `${baseWs}/spatial`;
+        // Only advertise WebTransport if certs are available
+        if (this.certHashBase64) {
+          td.events.spatialData.forms[0].href = baseWt;
+        } else {
+          td.events.spatialData.forms = td.events.spatialData.forms.filter(
+            (f: any) => f.subprotocol !== "webtransport"
+          );
+        }
+        const wsForm = td.events.spatialData.forms.find((f: any) => f.subprotocol === "websocket");
+        if (wsForm) wsForm.href = `${baseWs}/spatial`;
       }
       if (td.events?.buttonEvent?.forms) {
-        td.events.buttonEvent.forms[0].href = baseWt;
-        td.events.buttonEvent.forms[1].href = `${baseWs}/spatial`;
+        if (this.certHashBase64) {
+          td.events.buttonEvent.forms[0].href = baseWt;
+        } else {
+          td.events.buttonEvent.forms = td.events.buttonEvent.forms.filter(
+            (f: any) => f.subprotocol !== "webtransport"
+          );
+        }
+        const wsForm = td.events.buttonEvent.forms.find((f: any) => f.subprotocol === "websocket");
+        if (wsForm) wsForm.href = `${baseWs}/spatial`;
       }
 
       res.writeHead(200, {
