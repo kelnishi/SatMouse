@@ -2,6 +2,10 @@ import type { SpatialData, ButtonEvent } from "./types.js";
 
 /** Decode 24-byte binary spatial data datagram (WebTransport or raw binary) */
 export function decodeBinaryFrame(buffer: ArrayBuffer | Uint8Array): SpatialData {
+  const len = buffer instanceof ArrayBuffer ? buffer.byteLength : buffer.byteLength;
+  if (len < 20) {
+    throw new RangeError(`Spatial frame too short: expected ≥20 bytes, got ${len}`);
+  }
   const ab = buffer instanceof ArrayBuffer ? buffer : buffer.buffer;
   const offset = buffer instanceof Uint8Array ? buffer.byteOffset : 0;
   const view = new DataView(ab, offset);
@@ -48,9 +52,17 @@ export function decodeButtonStream(
   while (pos + 4 <= buffer.length) {
     const view = new DataView(buffer.buffer, buffer.byteOffset + pos);
     const len = view.getUint32(0, true);
-    if (pos + 4 + len > buffer.length) break;
+    // Guard against absurd lengths
+    if (len > 65536 || pos + 4 + len > buffer.length) break;
     const json = new TextDecoder().decode(buffer.subarray(pos + 4, pos + 4 + len));
-    events.push(JSON.parse(json) as ButtonEvent);
+    try {
+      const event = JSON.parse(json);
+      if (typeof event.button === "number" && typeof event.pressed === "boolean") {
+        events.push(event as ButtonEvent);
+      }
+    } catch {
+      // Skip malformed JSON frames
+    }
     pos += 4 + len;
   }
 
