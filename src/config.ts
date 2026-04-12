@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
+import { homedir } from "node:os";
 
 export interface SatMouseConfig {
   /** WebTransport server port (HTTP/3 QUIC) */
@@ -33,7 +34,7 @@ export function loadConfig(): SatMouseConfig {
     wtPort: parsePort(process.env.SATMOUSE_WT_PORT, 18946),
     wsPort: parsePort(process.env.SATMOUSE_WS_PORT, 18945),
     host: process.env.SATMOUSE_HOST ?? "0.0.0.0",
-    certsDir: resolve(process.env.SATMOUSE_CERTS_DIR ?? "./certs"),
+    certsDir: resolve(process.env.SATMOUSE_CERTS_DIR ?? join(homedir(), "Library", "Application Support", "SatMouse", "certs")),
     serviceName: process.env.SATMOUSE_SERVICE_NAME ?? "SatMouse",
     enabledPlugins: process.env.SATMOUSE_PLUGINS?.split(",") ?? [],
   };

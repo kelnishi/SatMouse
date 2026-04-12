@@ -13,6 +13,7 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolveResource } from "./resources.js";
 import { ensureNSApp } from "./nsapp.js";
+import { ensureCerts } from "./certs.js";
 
 function getVersion(): string {
   try {
@@ -29,6 +30,9 @@ async function main(): Promise<void> {
 
   // Bootstrap NSApplication before anything else on macOS
   ensureNSApp();
+
+  // Generate TLS certs if missing (for WebTransport)
+  ensureCerts(config.certsDir);
 
   console.log(`SatMouse v${version} — 6DOF Spatial Input Bridge`);
   console.log("──────────────────────────────────────────");

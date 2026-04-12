@@ -8,6 +8,7 @@ import { buildDeviceInfo } from "./products.js";
 const FRAMEWORK_PATH = "/Library/Frameworks/3DconnexionClient.framework/3DconnexionClient";
 const CF_PATH = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
 
+const kConnexionClientWildcard = 0x2a2a2a2a;
 const kConnexionClientManual = 0x2b2b2b2b;
 const kConnexionClientModeTakeOver = 1;
 const kConnexionMaskAll = 0x3fff;
@@ -109,11 +110,20 @@ export class MacOSConnexionDriver extends ConnexionDriver {
     const err = SetConnexionHandlers(msgCb, addCb, remCb, false);
     if (err !== 0) throw new Error(`SetConnexionHandlers failed: ${err}`);
 
+    // Try manual activation first, fall back to wildcard
     this.clientId = RegisterConnexionClient(kConnexionClientManual, null, kConnexionClientModeTakeOver, kConnexionMaskAll);
-    SetConnexionClientButtonMask(this.clientId, kConnexionMaskAllButtons);
-    ConnexionClientControl(this.clientId, kConnexionCtlActivateClient, 0, Buffer.alloc(4));
+    if (this.clientId === 0) {
+      console.warn("[3Dconnexion/macOS] Manual registration failed. Trying wildcard...");
+      this.clientId = RegisterConnexionClient(kConnexionClientWildcard, null, kConnexionClientModeTakeOver, kConnexionMaskAll);
+    }
 
-    console.log(`[3Dconnexion/macOS] Registered client ID: ${this.clientId}`);
+    if (this.clientId === 0) {
+      console.warn("[3Dconnexion/macOS] Registration failed (ID 0). Is 3DxWare running?");
+    } else {
+      SetConnexionClientButtonMask(this.clientId, kConnexionMaskAllButtons);
+      ConnexionClientControl(this.clientId, kConnexionCtlActivateClient, 0, Buffer.alloc(4));
+      console.log(`[3Dconnexion/macOS] Registered client ID: ${this.clientId}`);
+    }
 
     this.runLoopTimer = setInterval(() => {
       CFRunLoopRunInMode(defaultMode, 0.01, false);
