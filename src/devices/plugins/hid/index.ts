@@ -1,6 +1,6 @@
 import { DevicePlugin, type DeviceInfo, type SpatialData } from "../../types.js";
 import { nativeRequire } from "../../../native-require.js";
-import { findMapping, type HIDDeviceMapping, type AxisMapping } from "./mappings.js";
+import { findMapping, type HIDDeviceMapping } from "./mappings.js";
 
 export { BUILTIN_MAPPINGS, findMapping } from "./mappings.js";
 export type { HIDDeviceMapping, AxisMapping, ButtonMapping } from "./mappings.js";
@@ -9,8 +9,8 @@ export type { HIDDeviceMapping, AxisMapping, ButtonMapping } from "./mappings.js
  * Generic HID plugin — supports Space Mushroom, gamepads (Xbox, PlayStation),
  * and other USB HID devices via configurable axis/button mappings.
  *
- * Uses the Web HID API (browsers) or node-hid (Node.js) depending on environment.
- * Mappings can be customized per vendor/product ID or at runtime.
+ * Gamepad axes are normalized to SpaceMouse-equivalent range (-350 to 350).
+ * Dead zones filter joystick idle noise. Only emits when input is non-zero.
  */
 export class HIDPlugin extends DevicePlugin {
   readonly id = "hid";
@@ -19,7 +19,6 @@ export class HIDPlugin extends DevicePlugin {
 
   private customMappings: HIDDeviceMapping[] = [];
   private devices: DeviceInfo[] = [];
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
   private hidDevice: any = null;
 
   constructor(customMappings?: HIDDeviceMapping[]) {
@@ -39,7 +38,6 @@ export class HIDPlugin extends DevicePlugin {
   async connect(): Promise<void> {
     const HID = nativeRequire("node-hid");
 
-    // Enumerate HID devices and find ones we have mappings for
     const hidDevices = HID.devices() as Array<{
       vendorId: number;
       productId: number;
@@ -49,7 +47,8 @@ export class HIDPlugin extends DevicePlugin {
 
     for (const dev of hidDevices) {
       const mapping = findMapping(dev.vendorId, dev.productId, this.customMappings);
-      if (!mapping || mapping.vendorId === 0) continue; // Skip generic fallback during enumeration
+      // Skip generic fallback (vendorId 0) during auto-enumeration
+      if (!mapping || mapping.vendorId === 0) continue;
 
       try {
         this.hidDevice = new HID.HID(dev.path ?? `${dev.vendorId}:${dev.productId}`);
@@ -70,7 +69,6 @@ export class HIDPlugin extends DevicePlugin {
 
         let prevButtons = 0;
 
-        // node-hid delivers data via callback
         this.hidDevice.on("data", (report: Buffer) => {
           this.processReport(report, mapping, prevButtons, (buttons) => {
             prevButtons = buttons;
@@ -81,7 +79,7 @@ export class HIDPlugin extends DevicePlugin {
           this.emit("error", err);
         });
 
-        break; // Connect first matching device
+        break;
       } catch (err) {
         console.log(`[HID] Failed to open ${mapping.name}: ${err}`);
       }
@@ -93,10 +91,6 @@ export class HIDPlugin extends DevicePlugin {
       try { this.hidDevice.close(); } catch {}
       this.hidDevice = null;
     }
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
     this.devices = [];
   }
 
@@ -104,7 +98,6 @@ export class HIDPlugin extends DevicePlugin {
     return [...this.devices];
   }
 
-  /** Add a custom mapping at runtime */
   addMapping(mapping: HIDDeviceMapping): void {
     this.customMappings.push(mapping);
   }
@@ -116,42 +109,66 @@ export class HIDPlugin extends DevicePlugin {
     setButtons: (b: number) => void,
   ): void {
     const timestamp = performance.now() * 1000;
+    const offset = mapping.axisOffset ?? 0;
 
-    // Extract axes from the report
+    // Read raw axes based on format
     const rawAxes: number[] = [];
-    for (let i = 0; i < Math.min(report.length / 2, 8); i++) {
-      rawAxes.push(report.readInt16LE(i * 2));
+    if (mapping.axisFormat === "uint8") {
+      for (let i = 0; i < 8 && offset + i < report.length; i++) {
+        rawAxes.push(report[offset + i]);
+      }
+    } else {
+      for (let i = 0; i < 8 && offset + i * 2 + 1 < report.length; i++) {
+        rawAxes.push(report.readInt16LE(offset + i * 2));
+      }
     }
 
-    // Apply axis mappings
     const spatial: SpatialData = {
       translation: { x: 0, y: 0, z: 0 },
       rotation: { x: 0, y: 0, z: 0 },
       timestamp,
     };
 
+    let hasNonZero = false;
+
     for (const am of mapping.axes) {
       if (am.sourceAxis >= rawAxes.length) continue;
-      let value = rawAxes[am.sourceAxis];
-      if (am.deadZone && Math.abs(value) < am.deadZone * 32767) value = 0;
-      if (am.invert) value = -value;
-      value *= am.scale ?? 1;
+
+      // Normalize to -1.0 .. 1.0
+      let normalized: number;
+      if (mapping.axisFormat === "uint8") {
+        normalized = (rawAxes[am.sourceAxis] - 128) / 127;
+      } else {
+        normalized = rawAxes[am.sourceAxis] / 32767;
+      }
+
+      // Dead zone
+      const dz = am.deadZone ?? 0;
+      if (Math.abs(normalized) < dz) normalized = 0;
+
+      if (am.invert) normalized = -normalized;
+
+      // Scale to SpaceMouse-equivalent range (default 350)
+      const value = normalized * (am.scale ?? 350);
+      if (value !== 0) hasNonZero = true;
 
       const [group, axis] = [am.target[0], am.target[1]] as ["t" | "r", "x" | "y" | "z"];
       if (group === "t") spatial.translation[axis] = value;
       else spatial.rotation[axis] = value;
     }
 
-    this.emit("spatialData", spatial);
+    // Only emit when there's actual input
+    if (hasNonZero) {
+      this.emit("spatialData", spatial);
+    }
 
-    // Extract buttons (after axis data in the report)
-    const buttonOffset = Math.ceil(rawAxes.length * 2);
-    if (report.length > buttonOffset) {
+    // Buttons
+    const btnOffset = mapping.buttonOffset ?? (offset + (mapping.axisFormat === "uint8" ? rawAxes.length : rawAxes.length * 2));
+    if (report.length > btnOffset) {
       let buttons = 0;
-      for (let i = buttonOffset; i < Math.min(report.length, buttonOffset + 4); i++) {
-        buttons |= report[i] << ((i - buttonOffset) * 8);
+      for (let i = btnOffset; i < Math.min(report.length, btnOffset + 4); i++) {
+        buttons |= report[i] << ((i - btnOffset) * 8);
       }
-
       if (buttons !== prevButtons) {
         for (const bm of mapping.buttons) {
           const srcMask = 1 << bm.sourceButton;
