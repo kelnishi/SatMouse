@@ -11,10 +11,13 @@ import {
   applyDeadZone,
   applyAxisRemap,
 } from "./transforms.js";
+import { applyActionMap, actionValuesToSpatialData, type ActionValues } from "./action-map.js";
 
 export interface InputManagerEvents {
-  /** Processed spatial data (after all transforms) */
+  /** Processed spatial data (after all transforms + action map) */
   spatialData: (data: SpatialData) => void;
+  /** Named action values from the action map */
+  actionValues: (values: ActionValues) => void;
   /** Raw spatial data (before transforms) */
   rawSpatialData: (data: SpatialData) => void;
   /** Button event (pass-through from connection) */
@@ -110,6 +113,7 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
       deadZone: resolved.deadZone,
       dominant: resolved.dominant,
       axisRemap: resolved.axisRemap,
+      actionMap: resolved.actionMap,
       lockPosition: resolved.lockPosition,
       lockRotation: resolved.lockRotation,
     };
@@ -144,11 +148,18 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
     return () => this.off("buttonEvent", callback);
   }
 
+  /** Register a callback for action values. Returns unsubscribe function. */
+  onActionValues(callback: (values: ActionValues) => void): () => void {
+    this.on("actionValues", callback);
+    return () => this.off("actionValues", callback);
+  }
+
   private wireConnection(connection: SatMouseConnection): void {
     connection.on("spatialData", (raw) => {
       this.emit("rawSpatialData", raw);
-      const processed = this.processSpatialData(raw);
-      if (processed) this.emit("spatialData", processed);
+      const { spatial, actions } = this.processSpatialData(raw);
+      if (spatial) this.emit("spatialData", spatial);
+      if (actions) this.emit("actionValues", actions);
     });
 
     connection.on("buttonEvent", (event) => this.emit("buttonEvent", event));
@@ -160,9 +171,7 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
     });
   }
 
-  private processSpatialData(raw: SpatialData): SpatialData | null {
-    // TODO: When the bridge includes deviceId in spatial data messages,
-    // resolve per-device config here. For now, use global config.
+  private processSpatialData(raw: SpatialData): { spatial: SpatialData | null; actions: ActionValues | null } {
     const cfg = this._config;
     let data = raw;
 
@@ -180,6 +189,13 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
       data = { ...data, rotation: { x: 0, y: 0, z: 0 } };
     }
 
-    return data;
+    // Apply action map: remap transformed axes to named actions
+    const actions = applyActionMap(data, cfg.actionMap);
+
+    // Convert action values back to spatial data for consumers that
+    // expect the standard tx/ty/tz/rx/ry/rz format
+    const spatial = actionValuesToSpatialData(actions, data.timestamp);
+
+    return { spatial, actions };
   }
 }
