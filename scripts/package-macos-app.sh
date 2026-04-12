@@ -158,7 +158,11 @@ PLIST
 # PkgInfo
 echo -n "APPL????" > "$APP/Contents/PkgInfo"
 
+# Register with Launch Services (registers satmouse:// URL scheme)
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" 2>/dev/null || true
+
 echo "=== Created $APP ==="
 echo "  Binary:   $APP/Contents/MacOS/satmouse"
 echo "  Addons:   $APP/Contents/Resources/node_modules/"
 echo "  LSUIElement: true (menu bar only, no dock icon)"
+echo "  URL scheme: satmouse://"

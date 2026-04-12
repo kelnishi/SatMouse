@@ -27,6 +27,7 @@ export class SatMouseStatus extends HTMLElement {
   private launch!: HTMLButtonElement;
   private manager: InputManager | null = null;
   private unsub: (() => void) | null = null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   private stateHandler = (state: ConnectionState, protocol: TransportProtocol) => this.update(state, protocol);
 
@@ -40,22 +41,20 @@ export class SatMouseStatus extends HTMLElement {
     this.launch = shadow.querySelector(".launch")!;
 
     this.launch.addEventListener("click", () => {
-      window.location.href = "satmouse://launch";
-      setTimeout(() => {
-        if (!document.hidden) {
-          if (confirm("SatMouse doesn't appear to be installed. Go to the download page?")) {
-            window.open("https://github.com/kelnishi/SatMouse/releases/latest", "_blank", "noopener");
-          }
-        }
-      }, 1000);
+      this.startLaunchFlow();
     });
   }
 
   connectedCallback() {
     this.unsub = onManager((mgr) => this.bind(mgr));
+    // Reset button state on remount
+    this.stopPoll();
+    this.launch.disabled = false;
+    this.launch.textContent = "Launch SatMouse";
   }
 
   disconnectedCallback() {
+    this.stopPoll();
     this.unsub?.();
     this.unbind();
   }
@@ -77,6 +76,7 @@ export class SatMouseStatus extends HTMLElement {
     this.proto.textContent = protocol !== "none" ? protocol : "";
 
     if (state === "connected") {
+      this.stopPoll();
       this.text.textContent = "Connected";
       this.launch.style.display = "none";
     } else if (state === "connecting") {
@@ -85,9 +85,46 @@ export class SatMouseStatus extends HTMLElement {
     } else if (state === "failed") {
       this.text.textContent = "Not running";
       this.launch.style.display = "inline-block";
+      this.launch.disabled = false;
+      this.launch.textContent = "Launch SatMouse";
     } else {
       this.text.textContent = "Disconnected";
       this.launch.style.display = "none";
+    }
+  }
+
+  private startLaunchFlow(): void {
+    this.launch.textContent = "Connecting...";
+    this.launch.disabled = true;
+
+    this.manager?.retry();
+    window.location.href = "satmouse://launch";
+
+    let attempts = 0;
+    this.stopPoll();
+    this.pollTimer = setInterval(() => {
+      attempts++;
+      if (this.manager?.state === "connected") {
+        this.stopPoll();
+        return;
+      }
+      if (attempts >= 5) {
+        this.stopPoll();
+        this.launch.disabled = false;
+        this.launch.textContent = "Launch SatMouse";
+        if (confirm("SatMouse doesn't appear to be installed. Go to the download page?")) {
+          window.open("https://github.com/kelnishi/SatMouse/releases/latest", "_blank", "noopener");
+        }
+        return;
+      }
+      this.manager?.retry();
+    }, 1500);
+  }
+
+  private stopPoll(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
     }
   }
 }

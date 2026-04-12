@@ -58,6 +58,11 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
     this.wireConnection(connection);
   }
 
+  /** Reset retry count and reconnect all failed connections. */
+  retry(): void {
+    for (const c of this.connections) c.retry();
+  }
+
   removeConnection(connection: SatMouseConnection): void {
     const idx = this.connections.indexOf(connection);
     if (idx !== -1) this.connections.splice(idx, 1);
