@@ -76,9 +76,11 @@ jobs:
                 codesign --sign "$SIGNING_IDENTITY" --options runtime --timestamp --force "$f"
               fi
             done
-            # Sign the Node binary in Resources/bin/
+            # Sign the Node binary with entitlements (needs JIT + unsigned memory)
             echo "Signing: dist/SatMouse.app/Contents/Resources/bin/node"
-            codesign --sign "$SIGNING_IDENTITY" --options runtime --timestamp --force \
+            codesign --sign "$SIGNING_IDENTITY" --options runtime \
+              --entitlements scripts/entitlements.plist \
+              --timestamp --force \
               dist/SatMouse.app/Contents/Resources/bin/node
 
             # Sign the .app bundle
