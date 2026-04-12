@@ -6,7 +6,7 @@ set -euo pipefail
 
 BINARY="${1:-dist/satmouse}"
 APP="dist/SatMouse.app"
-BUNDLE_ID="dev.satmouse.SatMouse"
+BUNDLE_ID="com.kelnishi.SatMouse"
 VERSION="${SATMOUSE_VERSION:-0.1.0}"
 
 echo "=== Packaging SatMouse.app ==="
