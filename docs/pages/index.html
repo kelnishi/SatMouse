@@ -371,7 +371,7 @@
       <h1>Sat<span>Mouse</span></h1>
       <p>Stream 6DOF spatial input from your devices to web apps and PWAs. Zero-config, open protocol.</p>
       <div class="hero-actions">
-        <a href="https://github.com/kelnishi/SatMouse/releases/latest" class="btn btn-primary">Download</a>
+        <a id="download-btn" href="https://github.com/kelnishi/SatMouse/releases/latest" class="btn btn-primary">Download</a>
         <a href="https://github.com/kelnishi/SatMouse" class="btn btn-secondary">GitHub</a>
       </div>
     </div>
@@ -411,17 +411,17 @@
     <div class="container">
       <h2>Platforms</h2>
       <div class="platform-grid">
-        <a href="https://github.com/kelnishi/SatMouse/releases/latest" class="platform">
+        <a href="https://github.com/kelnishi/SatMouse/releases/latest/download/SatMouse-macOS-arm64.zip" class="platform">
           <div class="platform-icon">🍎</div>
           <h3>macOS</h3>
           <p>Apple Silicon &middot; .app bundle</p>
         </a>
-        <a href="https://github.com/kelnishi/SatMouse/releases/latest" class="platform">
+        <a href="https://github.com/kelnishi/SatMouse/releases/latest/download/satmouse-linux-x64.tar.gz" class="platform">
           <div class="platform-icon">🐧</div>
           <h3>Linux</h3>
           <p>x64 &middot; standalone binary</p>
         </a>
-        <a href="https://github.com/kelnishi/SatMouse/releases/latest" class="platform">
+        <a href="https://github.com/kelnishi/SatMouse/releases/latest/download/satmouse-win32-x64.tar.gz" class="platform">
           <div class="platform-icon">🪟</div>
           <h3>Windows</h3>
           <p>x64 &middot; standalone binary</p>
@@ -554,6 +554,24 @@
         document.getElementById("tab-" + tab.dataset.tab).style.display = "";
       });
     });
+
+    // Platform-specific download link
+    (function() {
+      const btn = document.getElementById("download-btn");
+      const base = "https://github.com/kelnishi/SatMouse/releases/latest/download/";
+      const ua = navigator.userAgent || "";
+      const platform = navigator.platform || "";
+      if (/Mac/i.test(platform) || /Mac/i.test(ua)) {
+        btn.href = base + "SatMouse-macOS-arm64.zip";
+        btn.textContent = "Download for macOS";
+      } else if (/Win/i.test(platform) || /Windows/i.test(ua)) {
+        btn.href = base + "satmouse-win32-x64.tar.gz";
+        btn.textContent = "Download for Windows";
+      } else if (/Linux/i.test(platform) || /Linux/i.test(ua)) {
+        btn.href = base + "satmouse-linux-x64.tar.gz";
+        btn.textContent = "Download for Linux";
+      }
+    })();
   </script>
 </body>
 </html>
