@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "SatMouse",
+  "version": "1.0",
+  "description": "6DOF spatial input device bridge — connects web apps to SpaceMouse, gamepads, and HID devices.",
+  "permissions": ["nativeMessaging"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "externally_connectable": {
+    "matches": [
+      "https://*.github.io/*",
+      "https://*.kelcite.app/*",
+      "https://localhost/*",
+      "http://localhost/*",
+      "http://127.0.0.1/*"
+    ]
+  },
+  "icons": {
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  }
+}

@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/kelvinnishikawa/3DTools/SatMouse/src/extension/xcode/build/Build/Products/Release/SatMouse.app/Contents/MacOS/SatMouse'
+relocations:     []
+...

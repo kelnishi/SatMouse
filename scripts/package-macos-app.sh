@@ -139,11 +139,21 @@ if [ -f "assets/icons/SatMouse.icns" ]; then
   cp assets/icons/SatMouse.icns "$APP/Contents/Resources/SatMouse.icns"
 fi
 
-# Build and bundle Safari Web Extension
-if [ -f "src/extension/safari/SafariWebExtensionHandler.swift" ]; then
+# Build and bundle Safari Web Extension via Xcode
+if [ -d "src/extension/xcode/SatMouse/SatMouse.xcodeproj" ]; then
   echo "Building Safari Web Extension..."
-  mkdir -p "$APP/Contents/PlugIns"
-  bash scripts/build-safari-extension.sh "$APP/Contents/PlugIns/SatMouse Extension.appex"
+  xcodebuild -project src/extension/xcode/SatMouse/SatMouse.xcodeproj \
+    -scheme "SatMouse" -configuration Release \
+    -derivedDataPath src/extension/xcode/build \
+    CODE_SIGN_IDENTITY="-" CODE_SIGNING_ALLOWED=YES \
+    -quiet 2>&1 || echo "  Warning: Extension build failed (Safari extension will be unavailable)"
+  # Copy just the .appex from the Xcode build
+  APPEX_SRC="src/extension/xcode/build/Build/Products/Release/SatMouse.app/Contents/PlugIns/SatMouse Extension.appex"
+  if [ -d "$APPEX_SRC" ]; then
+    mkdir -p "$APP/Contents/PlugIns"
+    cp -R "$APPEX_SRC" "$APP/Contents/PlugIns/"
+    echo "  Bundled Safari Web Extension"
+  fi
 fi
 
 # Bundle and copy native messaging host

@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'SatMouse' in project 'SatMouse'
+➜ Explicit dependency on target 'SatMouse Extension' in project 'SatMouse'
+Target 'SatMouse Extension' in project 'SatMouse' (no dependencies)
