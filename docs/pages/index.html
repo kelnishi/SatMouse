@@ -620,11 +620,25 @@
     import { InputManager } from "https://unpkg.com/@kelnishi/satmouse-client/dist/utils/index.js";
     import { registerSatMouse } from "https://unpkg.com/@kelnishi/satmouse-client/dist/elements/index.js";
 
-    // Use HTTPS TD endpoint to avoid mixed-content blocks on HTTPS pages
     const connection = new SatMouseConnection({
-      tdUrl: "https://localhost:18947/td.json",
       maxRetries: 1,
       reconnectDelay: 5000,
+    });
+
+    // If connection fails (likely cert not trusted), show hint
+    connection.on("stateChange", (state) => {
+      const toolbar = document.querySelector(".demo-toolbar");
+      if (!toolbar) return;
+      const existing = toolbar.querySelector(".cert-hint");
+      if (state === "failed" && !existing) {
+        const hint = document.createElement("span");
+        hint.className = "cert-hint";
+        hint.style.cssText = "color: #f39c12; font-size: 11px;";
+        hint.textContent = "Open Web Client from the SatMouse tray menu to enable secure connections.";
+        toolbar.appendChild(hint);
+      } else if (state === "connected" && existing) {
+        existing.remove();
+      }
     });
     const manager = new InputManager();
     manager.addConnection(connection);

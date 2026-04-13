@@ -41,7 +41,8 @@ async function main(): Promise<void> {
   console.log(`SatMouse v${version} — 6DOF Spatial Input Bridge`);
   console.log("──────────────────────────────────────────");
 
-  const clientUrl = `http://localhost:${config.wsPort}/client/`;
+  const httpsPort = config.wsPort + 2;
+  const clientUrl = `https://localhost:${httpsPort}/client/`;
   const shutdown = () => {
     console.log("\nShutting down...");
     mdns.stop();
@@ -104,7 +105,6 @@ async function main(): Promise<void> {
   const mdns = new MDNSAdvertiser(config);
   mdns.start();
 
-  const httpsPort = config.wsPort + 2;
   console.log("\n──────────────────────────────────────────");
   console.log(`Legacy (compat):   ws://127.0.0.1:18944`);
   console.log(`Thing Description: http://localhost:${config.wsPort}/td.json`);
