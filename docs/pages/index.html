@@ -385,6 +385,19 @@
       min-width: 160px;
     }
 
+    .debug-overlay .btn-log {
+      margin-top: 6px;
+      border-top: 1px solid var(--border);
+      padding-top: 6px;
+      max-height: 100px;
+      overflow-y: auto;
+      font-size: 11px;
+    }
+
+    .debug-overlay .btn-log div { padding: 1px 0; }
+    .debug-overlay .btn-log .pressed { color: var(--green); }
+    .debug-overlay .btn-log .released { color: #e74c3c; }
+
     body { padding-top: 40px; }
 
     /* Footer */
@@ -418,6 +431,7 @@
 
   <div class="debug-overlay">
     <satmouse-debug></satmouse-debug>
+    <div class="btn-log" id="demo-btn-log"></div>
   </div>
 
   <section class="hero">
@@ -610,6 +624,16 @@
     const manager = new InputManager();
     manager.addConnection(connection);
     registerSatMouse(manager);
+
+    const btnLog = document.getElementById("demo-btn-log");
+    manager.onButtonEvent((e) => {
+      const div = document.createElement("div");
+      div.className = e.pressed ? "pressed" : "released";
+      div.textContent = `btn ${e.button} ${e.pressed ? "pressed" : "released"}`;
+      btnLog.insertBefore(div, btnLog.firstChild);
+      while (btnLog.children.length > 20) btnLog.removeChild(btnLog.lastChild);
+    });
+
     connection.connect().catch(() => {});
   </script>
 
