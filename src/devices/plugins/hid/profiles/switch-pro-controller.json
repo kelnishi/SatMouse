@@ -1,0 +1,30 @@
+{
+  "name": "Switch Pro Controller",
+  "vendorId": "0x057e",
+  "productId": "0x2009",
+  "note": "Nintendo Switch Pro Controller. 12-bit packed sticks, 3-byte button field. Verified via raw dump.",
+  "axisFormat": "int12",
+  "axisOffset": 6,
+  "buttonOffset": 3,
+  "buttonMask": "0xFF7FFF",
+  "axes": [
+    { "sourceAxis": 0, "target": "tx", "label": "Left Stick X", "deadZone": 0.15 },
+    { "sourceAxis": 1, "target": "tz", "label": "Left Stick Y", "invert": true, "deadZone": 0.15 },
+    { "sourceAxis": 2, "target": "rz", "label": "Right Stick X", "deadZone": 0.15 },
+    { "sourceAxis": 3, "target": "rx", "label": "Right Stick Y", "deadZone": 0.15 }
+  ],
+  "buttons": [
+    { "sourceButton": 0, "targetButton": 0, "label": "Y" },
+    { "sourceButton": 1, "targetButton": 1, "label": "X" },
+    { "sourceButton": 2, "targetButton": 2, "label": "B" },
+    { "sourceButton": 3, "targetButton": 3, "label": "A" },
+    { "sourceButton": 6, "targetButton": 4, "label": "R" },
+    { "sourceButton": 7, "targetButton": 5, "label": "ZR" },
+    { "sourceButton": 16, "targetButton": 6, "label": "Minus" },
+    { "sourceButton": 17, "targetButton": 7, "label": "Plus" },
+    { "sourceButton": 18, "targetButton": 8, "label": "R Stick" },
+    { "sourceButton": 19, "targetButton": 9, "label": "L Stick" },
+    { "sourceButton": 22, "targetButton": 10, "label": "L" },
+    { "sourceButton": 23, "targetButton": 11, "label": "ZL" }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "PlayStation Controller",
+  "vendorId": "0x054c",
+  "productId": "0x0000",
+  "note": "DualSense/DualShock — vendorId match, any productId. Verified on DualSense (0x0CE6) USB.",
+  "axisFormat": "uint8",
+  "axisOffset": 1,
+  "buttonOffset": 5,
+  "buttonMask": "0xFFF0",
+  "axes": [
+    { "sourceAxis": 0, "target": "tx", "label": "Left Stick X", "deadZone": 0.15 },
+    { "sourceAxis": 1, "target": "tz", "label": "Left Stick Y", "invert": true, "deadZone": 0.15 },
+    { "sourceAxis": 2, "target": "rz", "label": "Right Stick X", "deadZone": 0.15 },
+    { "sourceAxis": 3, "target": "rx", "label": "Right Stick Y", "deadZone": 0.15 },
+    { "sourceAxis": 7, "target": "ty", "label": "L2", "deadZone": 0.05, "unipolar": true },
+    { "sourceAxis": 8, "target": "ry", "label": "R2", "deadZone": 0.05, "unipolar": true }
+  ],
+  "buttons": [
+    { "sourceButton": 4, "targetButton": 0, "label": "Square" },
+    { "sourceButton": 5, "targetButton": 1, "label": "Cross" },
+    { "sourceButton": 6, "targetButton": 2, "label": "Circle" },
+    { "sourceButton": 7, "targetButton": 3, "label": "Triangle" },
+    { "sourceButton": 12, "targetButton": 4, "label": "Create" },
+    { "sourceButton": 13, "targetButton": 5, "label": "Options" },
+    { "sourceButton": 14, "targetButton": 6, "label": "L3" },
+    { "sourceButton": 15, "targetButton": 7, "label": "R3" }
+  ]
+}

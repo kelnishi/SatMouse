@@ -132,6 +132,18 @@ export class HIDPlugin extends DevicePlugin {
       for (let i = 0; i < axisCount && offset + i < report.length; i++) {
         rawAxes.push(report[offset + i]);
       }
+    } else if (mapping.axisFormat === "int12") {
+      // 12-bit packed pairs: [lo0, hi0_lo1, hi1, lo2, hi2_lo3, hi3, ...]
+      // Each pair of axes occupies 3 bytes
+      for (let i = 0; i < axisCount; i++) {
+        const byteOff = offset + Math.floor(i / 2) * 3;
+        if (byteOff + 2 >= report.length) break;
+        if (i % 2 === 0) {
+          rawAxes.push(report[byteOff] | ((report[byteOff + 1] & 0x0F) << 8));
+        } else {
+          rawAxes.push((report[byteOff + 1] >> 4) | (report[byteOff + 2] << 4));
+        }
+      }
     } else {
       for (let i = 0; i < axisCount && offset + i * 2 + 1 < report.length; i++) {
         rawAxes.push(report.readInt16LE(offset + i * 2));
@@ -159,10 +171,12 @@ export class HIDPlugin extends DevicePlugin {
       // Normalize to -1.0 .. 1.0 (bipolar) or 0.0 .. 1.0 (unipolar)
       let normalized: number;
       if (isUnipolar) {
-        const max = mapping.axisFormat === "uint8" ? 255 : 32767;
+        const max = mapping.axisFormat === "uint8" ? 255 : mapping.axisFormat === "int12" ? 4095 : 32767;
         normalized = rawAxes[am.sourceAxis] / max;
       } else if (mapping.axisFormat === "uint8") {
         normalized = (rawAxes[am.sourceAxis] - 128) / 127;
+      } else if (mapping.axisFormat === "int12") {
+        normalized = (rawAxes[am.sourceAxis] - 2048) / 2047;
       } else {
         normalized = rawAxes[am.sourceAxis] / 32767;
       }

@@ -1,0 +1,21 @@
+{
+  "name": "Logitech Dual Action",
+  "vendorId": "0x046d",
+  "productId": "0xc216",
+  "note": "Source: carldanley/node-gamepad. No joystick axes in source definition.",
+  "axisFormat": "uint8",
+  "buttonOffset": 4,
+  "buttons": [
+    { "sourceButton": 3, "targetButton": 0, "label": "1" },
+    { "sourceButton": 5, "targetButton": 1, "label": "2" },
+    { "sourceButton": 6, "targetButton": 2, "label": "3" },
+    { "sourceButton": 7, "targetButton": 3, "label": "4" },
+    { "sourceButton": 8, "targetButton": 4, "label": "5" },
+    { "sourceButton": 9, "targetButton": 5, "label": "6" },
+    { "sourceButton": 10, "targetButton": 6, "label": "7" },
+    { "sourceButton": 11, "targetButton": 7, "label": "8" },
+    { "sourceButton": 12, "targetButton": 8, "label": "9" },
+    { "sourceButton": 13, "targetButton": 9, "label": "10" }
+  ],
+  "axes": []
+}

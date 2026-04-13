@@ -1,0 +1,32 @@
+{
+  "name": "DualShock 3",
+  "vendorId": "0x054c",
+  "productId": "0x0268",
+  "note": "PS3 DualShock 3. Source: carldanley/node-gamepad. Buttons use bitmask comparison at byte offset.",
+  "axisFormat": "uint8",
+  "axes": [
+    { "sourceAxis": 6, "target": "tx", "label": "Left Stick X", "deadZone": 0.15 },
+    { "sourceAxis": 7, "target": "tz", "label": "Left Stick Y", "invert": true, "deadZone": 0.15 },
+    { "sourceAxis": 8, "target": "rz", "label": "Right Stick X", "deadZone": 0.15 },
+    { "sourceAxis": 9, "target": "rx", "label": "Right Stick Y", "deadZone": 0.15 }
+  ],
+  "buttonOffset": 2,
+  "buttons": [
+    { "sourceButton": 0, "targetButton": 0, "label": "Select" },
+    { "sourceButton": 1, "targetButton": 1, "label": "L3" },
+    { "sourceButton": 2, "targetButton": 2, "label": "R3" },
+    { "sourceButton": 3, "targetButton": 3, "label": "Start" },
+    { "sourceButton": 4, "targetButton": 4, "label": "D-pad Up" },
+    { "sourceButton": 5, "targetButton": 5, "label": "D-pad Right" },
+    { "sourceButton": 6, "targetButton": 6, "label": "D-pad Down" },
+    { "sourceButton": 7, "targetButton": 7, "label": "D-pad Left" },
+    { "sourceButton": 8, "targetButton": 8, "label": "L2" },
+    { "sourceButton": 9, "targetButton": 9, "label": "R2" },
+    { "sourceButton": 10, "targetButton": 10, "label": "L1" },
+    { "sourceButton": 11, "targetButton": 11, "label": "R1" },
+    { "sourceButton": 12, "targetButton": 12, "label": "Triangle" },
+    { "sourceButton": 13, "targetButton": 13, "label": "Circle" },
+    { "sourceButton": 14, "targetButton": 14, "label": "Cross" },
+    { "sourceButton": 15, "targetButton": 15, "label": "Square" }
+  ]
+}

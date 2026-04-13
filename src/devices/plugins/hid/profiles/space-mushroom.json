@@ -1,0 +1,18 @@
+{
+  "name": "Space Mushroom",
+  "vendorId": "0x1209",
+  "productId": "0x0001",
+  "axisFormat": "int16",
+  "axes": [
+    { "sourceAxis": 0, "target": "tx", "label": "X" },
+    { "sourceAxis": 1, "target": "ty", "label": "Y" },
+    { "sourceAxis": 2, "target": "tz", "label": "Z" },
+    { "sourceAxis": 3, "target": "rx", "label": "Pitch" },
+    { "sourceAxis": 4, "target": "ry", "label": "Yaw" },
+    { "sourceAxis": 5, "target": "rz", "label": "Roll" }
+  ],
+  "buttons": [
+    { "sourceButton": 0, "targetButton": 0 },
+    { "sourceButton": 1, "targetButton": 1 }
+  ]
+}
