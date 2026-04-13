@@ -32,9 +32,9 @@ cp dist/tray-wrapper.cjs "$APP/Contents/Resources/tray-wrapper.cjs"
 # Copy HID device profiles
 cp src/devices/plugins/hid/profiles.json "$APP/Contents/Resources/profiles.json"
 
-# Copy app icon
-if [ -d "assets/icons/SatMouse.icon" ]; then
-  cp -R assets/icons/SatMouse.icon "$APP/Contents/Resources/SatMouse.icon"
+# Copy app icon (.icns — macOS requires this format at runtime)
+if [ -f "assets/icons/SatMouse.icns" ]; then
+  cp assets/icons/SatMouse.icns "$APP/Contents/Resources/SatMouse.icns"
 fi
 
 # Compile a native launcher (CFBundleExecutable).
@@ -126,8 +126,6 @@ cat > "$APP/Contents/Info.plist" << PLIST
     <key>CFBundleExecutable</key>
     <string>satmouse</string>
     <key>CFBundleIconFile</key>
-    <string>SatMouse</string>
-    <key>CFBundleIconName</key>
     <string>SatMouse</string>
     <key>CFBundleIdentifier</key>
     <string>${BUNDLE_ID}</string>
