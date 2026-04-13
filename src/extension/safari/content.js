@@ -51,7 +51,8 @@
     }
   });
 
-  // Announce that the extension is available
+  // Announce that the extension is available (both ways)
+  window.__satmouseExtensionAvailable = true;
   window.postMessage({
     source: "satmouse-extension",
     type: "available"

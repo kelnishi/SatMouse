@@ -2,39 +2,17 @@
 set -euo pipefail
 
 # Creates SatMouse.app bundle:
-# 1. Builds the Swift app + Safari extension via Xcode
-# 2. Copies Node.js + JS bundles + resources into the .app
+# 1. Stage Node.js + JS bundles + resources into the Xcode project's Resources
+# 2. Build everything via Xcode (signs the complete bundle in one pass)
 
-APP="dist/SatMouse.app"
 NODE_VERSION="22.16.0"
 XCODE_PROJECT="src/extension/xcode/SatMouse/SatMouse.xcodeproj"
+XCODE_RESOURCES="src/extension/xcode/SatMouse/SatMouse/Resources"
+APP="dist/SatMouse.app"
 
 echo "=== Packaging SatMouse.app ==="
 
-# Step 1: Build the Swift app + extension via Xcode
-echo "Building Swift app + Safari extension..."
-# Use Developer ID if available, otherwise ad-hoc
-SIGN_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" | head -1 | awk -F'"' '{print $2}')
-if [ -z "$SIGN_ID" ]; then
-  SIGN_ID="-"
-fi
-echo "  Signing: $SIGN_ID"
-
-xcodebuild -project "$XCODE_PROJECT" \
-  -scheme "SatMouse" -configuration Release \
-  -derivedDataPath src/extension/xcode/build \
-  CODE_SIGN_IDENTITY="$SIGN_ID" CODE_SIGNING_ALLOWED=YES \
-  DEVELOPMENT_TEAM="${APPLE_TEAM_ID:-QVJ72LNVSK}" \
-  CODE_SIGN_ENTITLEMENTS="SatMouse/SatMouse.entitlements" \
-  -quiet 2>&1 || { echo "Xcode build failed"; exit 1; }
-
-# Copy Xcode output as the base .app
-rm -rf "$APP"
-cp -R "src/extension/xcode/build/Build/Products/Release/SatMouse.app" "$APP"
-
-echo "  Swift app built (with Safari extension .appex)"
-
-# Step 2: Get Node.js binary
+# Step 1: Get Node.js binary
 if [ -n "${1:-}" ]; then
   NODE_BIN="$1"
 elif [ -f "dist/node-official" ]; then
@@ -54,114 +32,102 @@ else
   NODE_BIN="dist/node-official"
 fi
 
-# Step 3: Copy Node.js + resources into the .app
-RESOURCES="$APP/Contents/Resources"
-mkdir -p "$RESOURCES/bin"
-cp "$NODE_BIN" "$RESOURCES/bin/node"
-chmod +x "$RESOURCES/bin/node"
+# Step 2: Stage everything into Xcode Resources (before build)
+echo "Staging resources..."
 
-# Sign Node binary with entitlements (network.server for port binding, JIT for V8)
+# Node binary
+mkdir -p "$XCODE_RESOURCES/bin"
+cp "$NODE_BIN" "$XCODE_RESOURCES/bin/node"
+chmod +x "$XCODE_RESOURCES/bin/node"
+
+# Sign Node with entitlements before Xcode build
 cat > /tmp/satmouse-node.entitlements << 'ENTITLEMENTS'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
-    <key>com.apple.security.network.server</key>
-    <true/>
-    <key>com.apple.security.network.client</key>
-    <true/>
-    <key>com.apple.security.cs.disable-library-validation</key>
-    <true/>
+    <key>com.apple.security.cs.allow-jit</key><true/>
+    <key>com.apple.security.network.server</key><true/>
+    <key>com.apple.security.network.client</key><true/>
+    <key>com.apple.security.cs.disable-library-validation</key><true/>
 </dict>
 </plist>
 ENTITLEMENTS
-codesign --force --sign - --entitlements /tmp/satmouse-node.entitlements "$RESOURCES/bin/node" 2>/dev/null || true
+codesign --force --sign - --entitlements /tmp/satmouse-node.entitlements "$XCODE_RESOURCES/bin/node"
 rm -f /tmp/satmouse-node.entitlements
 
 # JS bundles
-cp dist/main.js "$RESOURCES/main.cjs"
+cp dist/main.js "$XCODE_RESOURCES/main.cjs"
 
 # HID device profiles
-cp -R src/devices/plugins/hid/profiles "$RESOURCES/profiles"
+rm -rf "$XCODE_RESOURCES/profiles"
+cp -R src/devices/plugins/hid/profiles "$XCODE_RESOURCES/profiles"
 
 # App icon
 if [ -f "assets/icons/SatMouse.icns" ]; then
-  cp assets/icons/SatMouse.icns "$RESOURCES/SatMouse.icns"
+  cp assets/icons/SatMouse.icns "$XCODE_RESOURCES/SatMouse.icns"
 fi
 
-# Native modules
-if [ -d "node_modules/koffi" ]; then
-  echo "Bundling koffi native addon..."
-  mkdir -p "$RESOURCES/node_modules"
-  cp -R node_modules/koffi "$RESOURCES/node_modules/"
-fi
-if [ -d "node_modules/@fails-components" ]; then
-  echo "Bundling @fails-components native addons..."
-  mkdir -p "$RESOURCES/node_modules/@fails-components"
-  cp -R node_modules/@fails-components "$RESOURCES/node_modules/"
-fi
-if [ -d "node_modules/node-hid" ]; then
-  echo "Bundling node-hid native addon..."
-  cp -R node_modules/node-hid "$RESOURCES/node_modules/"
-fi
+# Native addons
+mkdir -p "$XCODE_RESOURCES/node_modules"
+[ -d "node_modules/koffi" ] && cp -R node_modules/koffi "$XCODE_RESOURCES/node_modules/"
+[ -d "node_modules/@fails-components" ] && { mkdir -p "$XCODE_RESOURCES/node_modules/@fails-components"; cp -R node_modules/@fails-components "$XCODE_RESOURCES/node_modules/"; }
+[ -d "node_modules/node-hid" ] && cp -R node_modules/node-hid "$XCODE_RESOURCES/node_modules/"
 
-# Package.json for version info
-cp package.json "$RESOURCES/"
+# Sign native addon .node files
+find "$XCODE_RESOURCES/node_modules" -name "*.node" -exec codesign --force --sign - {} \; 2>/dev/null || true
+
+# Package.json
+cp package.json "$XCODE_RESOURCES/"
 
 # Client files
-if [ -d "client" ]; then
-  mkdir -p "$RESOURCES/client"
-  cp client/index.html "$RESOURCES/client/" 2>/dev/null || true
-  cp client/style.css "$RESOURCES/client/" 2>/dev/null || true
-  cp client/main.js "$RESOURCES/client/" 2>/dev/null || true
-fi
-if [ -d "specs" ]; then
-  cp -R specs "$RESOURCES/"
-fi
+mkdir -p "$XCODE_RESOURCES/client"
+cp client/index.html "$XCODE_RESOURCES/client/" 2>/dev/null || true
+cp client/style.css "$XCODE_RESOURCES/client/" 2>/dev/null || true
+cp client/main.js "$XCODE_RESOURCES/client/" 2>/dev/null || true
+[ -d "specs" ] && { rm -rf "$XCODE_RESOURCES/specs"; cp -R specs "$XCODE_RESOURCES/specs"; }
 
-# Certs directory
-mkdir -p "$RESOURCES/certs"
-
-# Native messaging host for Safari extension
+# Native messaging host
 if [ -f "src/extension/native-messaging-host.js" ]; then
-  echo "Bundling native messaging host..."
   npx esbuild src/extension/native-messaging-host.js \
     --bundle --platform=node --format=cjs \
     --external:bufferutil --external:utf-8-validate \
-    --outfile="$RESOURCES/native-messaging-host.cjs"
-  cat > "$RESOURCES/native-messaging-host" << 'LAUNCHER'
+    --outfile="$XCODE_RESOURCES/native-messaging-host.cjs" 2>/dev/null
+  cat > "$XCODE_RESOURCES/native-messaging-host" << 'LAUNCHER'
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 exec "$DIR/bin/node" "$DIR/native-messaging-host.cjs"
 LAUNCHER
-  chmod +x "$RESOURCES/native-messaging-host"
-  cp src/extension/com.kelnishi.SatMouse.json "$RESOURCES/" 2>/dev/null || true
+  chmod +x "$XCODE_RESOURCES/native-messaging-host"
+  cp src/extension/com.kelnishi.SatMouse.json "$XCODE_RESOURCES/" 2>/dev/null || true
 fi
 
-# Re-sign the entire bundle after modifications.
-# Safari requires the .appex and parent .app to have matching signatures.
-echo "Re-signing bundle..."
-echo "  Signing identity: $SIGN_ID"
+echo "  Resources staged"
 
-# Sign Node binary with entitlements
-codesign --force --sign "$SIGN_ID" --entitlements /tmp/satmouse-node.entitlements "$RESOURCES/bin/node" 2>/dev/null || true
+# Step 3: Build via Xcode (signs everything in one pass)
+echo "Building with Xcode..."
+TEAM_ID="${APPLE_TEAM_ID:-QVJ72LNVSK}"
 
-# Re-sign native addons
-find "$RESOURCES/node_modules" -name "*.node" -exec codesign --force --sign "$SIGN_ID" {} \; 2>/dev/null || true
+xcodebuild -project "$XCODE_PROJECT" \
+  -scheme "SatMouse" -configuration Release \
+  -derivedDataPath src/extension/xcode/build \
+  DEVELOPMENT_TEAM="$TEAM_ID" \
+  CODE_SIGN_STYLE="Automatic" \
+  -quiet 2>&1 || { echo "Xcode build failed"; exit 1; }
 
-# Re-sign the .appex (nested — must be before parent)
-codesign --force --sign "$SIGN_ID" "$APP/Contents/PlugIns/SatMouse Extension.appex" 2>/dev/null || true
+# Step 4: Copy the complete signed .app
+rm -rf "$APP"
+cp -R "src/extension/xcode/build/Build/Products/Release/SatMouse.app" "$APP"
 
-# Re-sign the parent .app (must be last)
-codesign --force --sign "$SIGN_ID" "$APP" 2>/dev/null || true
+# Clean staged resources from Xcode project (don't commit them)
+rm -rf "$XCODE_RESOURCES/bin" "$XCODE_RESOURCES/main.cjs" "$XCODE_RESOURCES/profiles" \
+  "$XCODE_RESOURCES/node_modules" "$XCODE_RESOURCES/package.json" "$XCODE_RESOURCES/client" \
+  "$XCODE_RESOURCES/specs" "$XCODE_RESOURCES/native-messaging-host"* \
+  "$XCODE_RESOURCES/com.kelnishi.SatMouse.json" "$XCODE_RESOURCES/SatMouse.icns"
 
-# Register with Launch Services (satmouse:// URL scheme)
+# Register with Launch Services
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" 2>/dev/null || true
 
 echo "=== Created $APP ==="
-echo "  Main binary: $APP/Contents/MacOS/SatMouse (Swift)"
-echo "  Node.js:     $RESOURCES/bin/node"
-echo "  Extension:   $APP/Contents/PlugIns/SatMouse Extension.appex"
-echo "  URL scheme:  satmouse://"
+echo "  Signed by Xcode (no post-build re-signing)"
+echo "  Extension: $APP/Contents/PlugIns/SatMouse Extension.appex"
