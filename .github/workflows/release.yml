@@ -120,7 +120,7 @@ jobs:
           cp assets/icons/SatMouse.svg dist/SatMouse.svg
           cp -R src/devices/plugins/hid/profiles dist/profiles
           cd dist
-          tar czf ../satmouse-linux-${{ matrix.arch }}.tar.gz node main.cjs SatMouse.svg profiles/
+          tar czf ../satmouse-linux-${{ matrix.arch }}.tar.gz node main.cjs SatMouse.svg profiles
 
       - name: Package Windows
         if: matrix.platform == 'win32'
@@ -130,7 +130,7 @@ jobs:
           Copy-Item "assets/icons/SatMouse-Default-1024x1024@1x.png" "dist/SatMouse.png"
           Copy-Item -Recurse "src/devices/plugins/hid/profiles" "dist/profiles"
           cd dist
-          tar czf ../satmouse-win32-${{ matrix.arch }}.tar.gz node.exe main.cjs SatMouse.png profiles/
+          tar czf ../satmouse-win32-${{ matrix.arch }}.tar.gz node.exe main.cjs SatMouse.png profiles
         shell: pwsh
 
       - name: Upload release asset (macOS)
