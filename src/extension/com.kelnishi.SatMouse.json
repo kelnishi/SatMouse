@@ -1,0 +1,9 @@
+{
+  "name": "com.kelnishi.SatMouse",
+  "description": "SatMouse spatial input bridge — native messaging host",
+  "path": "/Applications/SatMouse.app/Contents/Resources/native-messaging-host",
+  "type": "stdio",
+  "allowed_origins": [
+    "safari-web-extension://com.kelnishi.SatMouse.Extension"
+  ]
+}

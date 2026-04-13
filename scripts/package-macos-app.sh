@@ -44,9 +44,22 @@ if [ -f "src/extension/safari/SafariWebExtensionHandler.swift" ]; then
   bash scripts/build-safari-extension.sh "$APP/Contents/PlugIns/SatMouse Extension.appex"
 fi
 
-# Copy native messaging host
+# Bundle and copy native messaging host
 if [ -f "src/extension/native-messaging-host.js" ]; then
-  cp src/extension/native-messaging-host.js "$APP/Contents/Resources/native-messaging-host.js"
+  echo "Bundling native messaging host..."
+  npx esbuild src/extension/native-messaging-host.js \
+    --bundle --platform=node --format=cjs \
+    --external:bufferutil --external:utf-8-validate \
+    --outfile="$APP/Contents/Resources/native-messaging-host.cjs"
+  # Create launcher script (Safari launches this directly)
+  cat > "$APP/Contents/Resources/native-messaging-host" << 'LAUNCHER'
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$DIR/bin/node" "$DIR/native-messaging-host.cjs"
+LAUNCHER
+  chmod +x "$APP/Contents/Resources/native-messaging-host"
+  # Copy native messaging host manifest
+  cp src/extension/com.kelnishi.SatMouse.json "$APP/Contents/Resources/"
 fi
 
 # Compile a native launcher (CFBundleExecutable).
