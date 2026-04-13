@@ -1092,16 +1092,50 @@ var SatMouseDevices = class extends HTMLElement {
     btnLabel.textContent = "Button Mappings";
     btnSection.appendChild(btnLabel);
     const buttonRoutes = cfg.buttonRoutes ?? [];
+    const labels = device.buttonLabels ?? [];
     for (let i = 0; i < buttonRoutes.length; i++) {
       const route = buttonRoutes[i];
+      const btnName = labels[route.button] ?? `Btn ${route.button}`;
       const row = document.createElement("div");
       row.className = "btn-route";
-      row.innerHTML = `<span class="btn-idx">Btn ${route.button}</span><span class="btn-arrow">\u2192</span><span class="btn-key">${route.key}</span>`;
+      const idxSpan = document.createElement("span");
+      idxSpan.className = "btn-idx";
+      idxSpan.textContent = btnName;
+      row.appendChild(idxSpan);
+      const arrow = document.createElement("span");
+      arrow.className = "btn-arrow";
+      arrow.textContent = "\u2192";
+      row.appendChild(arrow);
+      const keySpan = document.createElement("span");
+      keySpan.className = "btn-key";
+      keySpan.textContent = route.key;
+      row.appendChild(keySpan);
+      const editBtn = document.createElement("button");
+      editBtn.className = "btn-remove";
+      editBtn.textContent = "\u270E";
+      editBtn.title = "Remap key";
+      const routeIdx = i;
+      editBtn.addEventListener("click", () => {
+        keySpan.textContent = "Press a key...";
+        keySpan.style.color = "#f39c12";
+        const onKey = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          document.removeEventListener("keydown", onKey, true);
+          const current = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
+          const updated = current.map(
+            (r, j) => j === routeIdx ? { ...r, key: e.key, code: e.code } : r
+          );
+          mgr.updateDeviceConfig(device.id, { buttonRoutes: updated });
+          this.refreshControls(panel, device);
+        };
+        document.addEventListener("keydown", onKey, true);
+      });
+      row.appendChild(editBtn);
       const removeBtn = document.createElement("button");
       removeBtn.className = "btn-remove";
       removeBtn.textContent = "\xD7";
       removeBtn.title = "Remove";
-      const routeIdx = i;
       removeBtn.addEventListener("click", () => {
         const current = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
         const updated = current.filter((_, j) => j !== routeIdx);
