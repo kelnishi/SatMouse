@@ -1,19 +1,19 @@
 {
-  "name": "DualSense",
+  "name": "DualShock 4",
   "vendorId": "0x054c",
-  "productId": "0x0ce6",
-  "note": "PS5 DualSense. USB report 0x01. Triggers at bytes 5-6, buttons at bytes 8-10. Verified via raw dump.",
+  "productId": "0x05c4",
+  "note": "PS4 DualShock 4 (CUH-ZCT1). USB report 0x01. Also matches CUH-ZCT2 (0x09CC) via vendor wildcard fallback.",
   "axisFormat": "uint8",
   "axisOffset": 1,
-  "buttonOffset": 8,
-  "buttonMask": "0x03FFF0",
+  "buttonOffset": 5,
+  "buttonMask": "0xFFF0",
   "axes": [
     { "sourceAxis": 0, "target": "tx", "label": "Left Stick X", "deadZone": 0.15 },
     { "sourceAxis": 1, "target": "tz", "label": "Left Stick Y", "invert": true, "deadZone": 0.15 },
     { "sourceAxis": 2, "target": "rz", "label": "Right Stick X", "deadZone": 0.15 },
     { "sourceAxis": 3, "target": "rx", "label": "Right Stick Y", "deadZone": 0.15 },
-    { "sourceAxis": 4, "target": "ty", "label": "L2", "deadZone": 0.05, "unipolar": true },
-    { "sourceAxis": 5, "target": "ry", "label": "R2", "deadZone": 0.05, "unipolar": true }
+    { "sourceAxis": 7, "target": "ty", "label": "L2", "deadZone": 0.05, "unipolar": true },
+    { "sourceAxis": 8, "target": "ry", "label": "R2", "deadZone": 0.05, "unipolar": true }
   ],
   "buttons": [
     { "sourceButton": 4, "targetButton": 0, "label": "Square" },
@@ -24,11 +24,9 @@
     { "sourceButton": 9, "targetButton": 5, "label": "R1" },
     { "sourceButton": 10, "targetButton": 6, "label": "L2" },
     { "sourceButton": 11, "targetButton": 7, "label": "R2" },
-    { "sourceButton": 12, "targetButton": 8, "label": "Create" },
+    { "sourceButton": 12, "targetButton": 8, "label": "Share" },
     { "sourceButton": 13, "targetButton": 9, "label": "Options" },
     { "sourceButton": 14, "targetButton": 10, "label": "L3" },
-    { "sourceButton": 15, "targetButton": 11, "label": "R3" },
-    { "sourceButton": 16, "targetButton": 12, "label": "PS" },
-    { "sourceButton": 17, "targetButton": 13, "label": "Touchpad" }
+    { "sourceButton": 15, "targetButton": 11, "label": "R3" }
   ]
 }
