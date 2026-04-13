@@ -1,0 +1,21 @@
+{
+  "name": "Xbox Controller",
+  "vendorId": "0x045e",
+  "productId": "0x0000",
+  "axisFormat": "uint8",
+  "axisOffset": 1,
+  "axes": [
+    { "sourceAxis": 0, "target": "tx", "label": "Left Stick X", "deadZone": 0.15 },
+    { "sourceAxis": 1, "target": "tz", "label": "Left Stick Y", "invert": true, "deadZone": 0.15 },
+    { "sourceAxis": 2, "target": "rz", "label": "Right Stick X", "deadZone": 0.15 },
+    { "sourceAxis": 3, "target": "rx", "label": "Right Stick Y", "deadZone": 0.15 },
+    { "sourceAxis": 4, "target": "ty", "label": "LT", "deadZone": 0.1, "unipolar": true },
+    { "sourceAxis": 5, "target": "ry", "label": "RT", "deadZone": 0.1, "unipolar": true }
+  ],
+  "buttons": [
+    { "sourceButton": 0, "targetButton": 0 },
+    { "sourceButton": 1, "targetButton": 1 },
+    { "sourceButton": 2, "targetButton": 2 },
+    { "sourceButton": 3, "targetButton": 3 }
+  ]
+}

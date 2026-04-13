@@ -4,10 +4,12 @@ export interface Vec3 {
   z: number;
 }
 
-/** 6DOF spatial input frame — matches spatial-data.schema.json */
+/** 6DOF+W spatial input frame */
 export interface SpatialData {
   translation: Vec3;
   rotation: Vec3;
+  /** Virtual W axis — application-defined (e.g., zoom, scroll, tool size) */
+  w?: number;
   timestamp: number;
   /** Source device ID (e.g., "cnx-c635", "hid-054c-5c4") */
   deviceId?: string;
@@ -36,6 +38,8 @@ export interface DeviceInfo {
   axisLabels?: string[];
   /** Number of buttons this device provides */
   buttonCount?: number;
+  /** Human-readable labels for buttons (indexed by targetButton) */
+  buttonLabels?: string[];
 }
 
 export type ConnectionState = "disconnected" | "connecting" | "connected" | "failed";

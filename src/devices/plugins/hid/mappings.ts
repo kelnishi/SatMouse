@@ -33,10 +33,12 @@ export interface AxisMapping {
 }
 
 export interface ButtonMapping {
-  /** Raw button index from the HID report */
+  /** Raw bit index in the button bytes */
   sourceButton: number;
   /** Target SatMouse button index */
   targetButton: number;
+  /** Human-readable label */
+  label?: string;
 }
 
 export interface HIDDeviceMapping {
@@ -47,44 +49,53 @@ export interface HIDDeviceMapping {
   /** USB product ID (0 = match any) */
   productId: number;
   /** Axis data format in HID report */
-  axisFormat: "int16" | "uint8";
+  axisFormat: "int16" | "uint8" | "int12";
   /** Byte offset where axis data starts in the report (default: 0) */
   axisOffset?: number;
   /** Byte offset where button data starts (default: after axes) */
   buttonOffset?: number;
+  /** Bitmask to apply to button bytes before comparing (filters d-pad, etc.) */
+  buttonMask?: number;
+  /** Hat switch (d-pad) configuration. Value 0-7 = direction, 8+ = neutral. */
+  hat?: {
+    /** Byte offset in the report for the hat value */
+    byte: number;
+    /** Bitmask to extract the hat value (default: 0x0F for low nibble) */
+    mask?: number;
+    /** Target button indices for [up, right, down, left] */
+    buttons: [number, number, number, number];
+    /** Labels for [up, right, down, left] */
+    labels?: [string, string, string, string];
+  };
   /** Axis mappings */
   axes: AxisMapping[];
   /** Button mappings */
   buttons: ButtonMapping[];
 }
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 
-/** Find profiles.json — works in dev (tsx), CJS bundle (.app), and SEA */
-function findProfilesPath(): string | null {
+/** Find the profiles directory — works in dev (tsx), CJS bundle (.app), and SEA */
+function findProfilesDir(): string | null {
   const candidates: string[] = [];
 
-  // Dev mode: relative to this source file
   try {
     if (typeof __dirname !== "undefined") {
-      candidates.push(join(__dirname, "profiles.json"));
+      candidates.push(join(__dirname, "profiles"));
     }
   } catch {}
   try {
     if (import.meta?.url) {
       const { fileURLToPath } = require("node:url");
-      candidates.push(join(dirname(fileURLToPath(import.meta.url)), "profiles.json"));
+      candidates.push(join(dirname(fileURLToPath(import.meta.url)), "profiles"));
     }
   } catch {}
 
-  // CJS bundle in .app: Contents/Resources/profiles.json or alongside main.cjs
   const execDir = dirname(process.execPath);
-  candidates.push(join(execDir, "..", "Resources", "profiles.json"));
-  candidates.push(join(execDir, "profiles.json"));
-
-  // Project root paths (dev mode)
-  candidates.push(resolve("src/devices/plugins/hid/profiles.json"));
+  candidates.push(join(execDir, "..", "Resources", "profiles"));
+  candidates.push(join(execDir, "profiles"));
+  candidates.push(resolve("src/devices/plugins/hid/profiles"));
 
   for (const p of candidates) {
     if (existsSync(p)) return p;
@@ -92,20 +103,37 @@ function findProfilesPath(): string | null {
   return null;
 }
 
-/** Load profiles from profiles.json, converting hex vendorId/productId strings to numbers */
+/** Parse a profile JSON, converting hex strings to numbers */
+function parseProfile(raw: any): HIDDeviceMapping {
+  return {
+    ...raw,
+    vendorId: typeof raw.vendorId === "string" ? parseInt(raw.vendorId, 16) : raw.vendorId,
+    productId: typeof raw.productId === "string" ? parseInt(raw.productId, 16) : raw.productId,
+    buttonMask: typeof raw.buttonMask === "string" ? parseInt(raw.buttonMask, 16) : raw.buttonMask,
+    axes: (raw.axes ?? []).map((a: any) => ({ ...a, target: a.target as AxisTarget })),
+    buttons: raw.buttons ?? [],
+  };
+}
+
+/** Load all profiles from the profiles/ directory */
 function loadProfiles(): HIDDeviceMapping[] {
   try {
-    const path = findProfilesPath();
-    if (!path) throw new Error("profiles.json not found");
-    const raw = JSON.parse(readFileSync(path, "utf-8"));
-    return (raw.profiles as any[]).map((p) => ({
-      ...p,
-      vendorId: typeof p.vendorId === "string" ? parseInt(p.vendorId, 16) : p.vendorId,
-      productId: typeof p.productId === "string" ? parseInt(p.productId, 16) : p.productId,
-      axes: p.axes.map((a: any) => ({ ...a, target: a.target as AxisTarget })),
-    }));
+    const dir = findProfilesDir();
+    if (!dir) throw new Error("profiles/ directory not found");
+    const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
+    const profiles: HIDDeviceMapping[] = [];
+    for (const file of files) {
+      try {
+        const raw = JSON.parse(readFileSync(join(dir, file), "utf-8"));
+        profiles.push(parseProfile(raw));
+      } catch (err) {
+        console.warn(`[HID] Failed to load profile ${file}:`, err);
+      }
+    }
+    console.log(`[HID] Loaded ${profiles.length} device profiles`);
+    return profiles;
   } catch (err) {
-    console.warn("[HID] Failed to load profiles.json:", err);
+    console.warn("[HID] Failed to load profiles:", err);
     return [];
   }
 }

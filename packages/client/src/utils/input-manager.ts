@@ -25,7 +25,7 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
   private storage?: StorageAdapter;
   private knownDevices = new Map<string, DeviceInfo>();
 
-  private deviceAccumulators = new Map<string, { tx: number; ty: number; tz: number; rx: number; ry: number; rz: number }>();
+  private deviceAccumulators = new Map<string, { tx: number; ty: number; tz: number; rx: number; ry: number; rz: number; w: number }>();
   private accDirty = false;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -96,7 +96,10 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
     const resolved = resolveDeviceConfig(this._config, deviceId);
     return {
       routes: resolved.routes,
-      scale: resolved.scale,
+      buttonRoutes: resolved.buttonRoutes,
+      translateScale: resolved.translateScale,
+      rotateScale: resolved.rotateScale,
+      wScale: resolved.wScale,
       deadZone: resolved.deadZone,
       dominant: resolved.dominant,
     };
@@ -154,11 +157,16 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
         rx: processed.rotation.x,
         ry: processed.rotation.y,
         rz: processed.rotation.z,
+        w: processed.w ?? 0,
       });
       this.accDirty = true;
     });
 
-    connection.on("buttonEvent", (event) => this.emit("buttonEvent", event));
+    connection.on("buttonEvent", (event) => {
+      // Check all device configs for matching button routes
+      this.dispatchButtonKeys(event);
+      this.emit("buttonEvent", event);
+    });
     connection.on("stateChange", (state, proto) => {
       this._state = state;
       this._protocol = proto;
@@ -174,7 +182,7 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
   private flushAccumulator(): void {
     if (!this.accDirty) return;
 
-    const merged = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 };
+    const merged = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0, w: 0 };
     for (const acc of this.deviceAccumulators.values()) {
       merged.tx += acc.tx;
       merged.ty += acc.ty;
@@ -182,6 +190,7 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
       merged.rx += acc.rx;
       merged.ry += acc.ry;
       merged.rz += acc.rz;
+      merged.w += acc.w;
     }
 
     this.deviceAccumulators.clear();
@@ -190,6 +199,7 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
     let data: SpatialData = {
       translation: { x: merged.tx, y: merged.ty, z: merged.tz },
       rotation: { x: merged.rx, y: merged.ry, z: merged.rz },
+      w: merged.w || undefined,
       timestamp: performance.now() * 1000,
     };
 
@@ -240,7 +250,7 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
     // Use device-specific routes if configured, otherwise build from device axes metadata
     const device = this.knownDevices.get(deviceId);
     const deviceRoutes = this.resolveRoutes(deviceId, device);
-    data = applyRoutes(data, deviceRoutes, cfg.scale);
+    data = applyRoutes(data, deviceRoutes, cfg.translateScale, cfg.rotateScale, cfg.wScale);
 
     return data;
   }
@@ -263,5 +273,30 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
 
     // Global fallback
     return DEFAULT_ROUTES;
+  }
+
+  /** Dispatch KeyboardEvents for button routes matching this button event */
+  private dispatchButtonKeys(event: ButtonEvent): void {
+    if (typeof document === "undefined") return;
+
+    // Collect all button routes from all device configs + global
+    const allRoutes = this.collectButtonRoutes();
+    for (const route of allRoutes) {
+      if (route.button === event.button) {
+        document.dispatchEvent(new KeyboardEvent(
+          event.pressed ? "keydown" : "keyup",
+          { key: route.key, code: route.code ?? "", bubbles: true },
+        ));
+      }
+    }
+  }
+
+  /** Gather all button routes from global config + all device configs */
+  private collectButtonRoutes(): import("./config.js").ButtonRoute[] {
+    const routes = [...this._config.buttonRoutes];
+    for (const devCfg of Object.values(this._config.devices)) {
+      if (devCfg.buttonRoutes) routes.push(...devCfg.buttonRoutes);
+    }
+    return routes;
   }
 }

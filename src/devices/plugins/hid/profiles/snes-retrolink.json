@@ -1,0 +1,15 @@
+{
+  "name": "SNES Retrolink",
+  "vendorId": "0x0079",
+  "productId": "0x0011",
+  "note": "Retrolink SNES USB controller. Source: carldanley/node-gamepad.",
+  "axisFormat": "uint8",
+  "axes": [],
+  "buttonOffset": 5,
+  "buttons": [
+    { "sourceButton": 0, "targetButton": 0, "label": "L" },
+    { "sourceButton": 1, "targetButton": 1, "label": "R" },
+    { "sourceButton": 12, "targetButton": 2, "label": "Select" },
+    { "sourceButton": 13, "targetButton": 3, "label": "Start" }
+  ]
+}

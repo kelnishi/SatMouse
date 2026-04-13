@@ -64,7 +64,11 @@ export class HIDPlugin extends DevicePlugin {
           connectionType: "usb",
           axes: mapping.axes.map((a) => a.target),
           axisLabels: mapping.axes.map((a) => a.label ?? a.target.toUpperCase()),
-          buttonCount: mapping.buttons.length,
+          buttonCount: mapping.buttons.length + (mapping.hat ? 4 : 0),
+          buttonLabels: [
+            ...mapping.buttons.map((b) => b.label ?? `Button ${b.targetButton}`),
+            ...(mapping.hat?.labels ?? []),
+          ],
         };
         this.devices.push(info);
         this.emit("deviceConnected", info);
@@ -131,6 +135,18 @@ export class HIDPlugin extends DevicePlugin {
       for (let i = 0; i < axisCount && offset + i < report.length; i++) {
         rawAxes.push(report[offset + i]);
       }
+    } else if (mapping.axisFormat === "int12") {
+      // 12-bit packed pairs: [lo0, hi0_lo1, hi1, lo2, hi2_lo3, hi3, ...]
+      // Each pair of axes occupies 3 bytes
+      for (let i = 0; i < axisCount; i++) {
+        const byteOff = offset + Math.floor(i / 2) * 3;
+        if (byteOff + 2 >= report.length) break;
+        if (i % 2 === 0) {
+          rawAxes.push(report[byteOff] | ((report[byteOff + 1] & 0x0F) << 8));
+        } else {
+          rawAxes.push((report[byteOff + 1] >> 4) | (report[byteOff + 2] << 4));
+        }
+      }
     } else {
       for (let i = 0; i < axisCount && offset + i * 2 + 1 < report.length; i++) {
         rawAxes.push(report.readInt16LE(offset + i * 2));
@@ -158,10 +174,12 @@ export class HIDPlugin extends DevicePlugin {
       // Normalize to -1.0 .. 1.0 (bipolar) or 0.0 .. 1.0 (unipolar)
       let normalized: number;
       if (isUnipolar) {
-        const max = mapping.axisFormat === "uint8" ? 255 : 32767;
+        const max = mapping.axisFormat === "uint8" ? 255 : mapping.axisFormat === "int12" ? 4095 : 32767;
         normalized = rawAxes[am.sourceAxis] / max;
       } else if (mapping.axisFormat === "uint8") {
         normalized = (rawAxes[am.sourceAxis] - 128) / 127;
+      } else if (mapping.axisFormat === "int12") {
+        normalized = (rawAxes[am.sourceAxis] - 2048) / 2047;
       } else {
         normalized = rawAxes[am.sourceAxis] / 32767;
       }
@@ -194,11 +212,13 @@ export class HIDPlugin extends DevicePlugin {
     const btnOffset = mapping.buttonOffset ?? (offset + (mapping.axisFormat === "uint8" ? rawAxes.length : rawAxes.length * 2));
     const maxBtn = mapping.buttons.reduce((m, b) => Math.max(m, b.sourceButton), -1);
     const btnBytes = maxBtn >= 0 ? Math.ceil((maxBtn + 1) / 8) : 0;
+    const btnMask = mapping.buttonMask ?? 0xFFFFFFFF;
     if (btnBytes > 0 && report.length > btnOffset) {
       let buttons = 0;
       for (let i = btnOffset; i < Math.min(report.length, btnOffset + btnBytes); i++) {
         buttons |= report[i] << ((i - btnOffset) * 8);
       }
+      buttons &= btnMask; // Filter out d-pad or other non-button bits
       if (buttons !== prevButtons) {
         for (const bm of mapping.buttons) {
           const srcMask = 1 << bm.sourceButton;
@@ -211,6 +231,27 @@ export class HIDPlugin extends DevicePlugin {
           }
         }
         setButtons(buttons);
+      }
+    }
+
+    // Hat switch (d-pad) — decoded as 4 virtual buttons
+    if (mapping.hat && report.length > mapping.hat.byte) {
+      const hatVal = report[mapping.hat.byte] & (mapping.hat.mask ?? 0x0F);
+      // Hat values: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW, 8+=neutral
+      const [upBtn, rightBtn, downBtn, leftBtn] = mapping.hat.buttons;
+      const up    = hatVal === 0 || hatVal === 1 || hatVal === 7;
+      const right = hatVal === 1 || hatVal === 2 || hatVal === 3;
+      const down  = hatVal === 3 || hatVal === 4 || hatVal === 5;
+      const left  = hatVal === 5 || hatVal === 6 || hatVal === 7;
+
+      const hatState = (up ? 1 : 0) | (right ? 2 : 0) | (down ? 4 : 0) | (left ? 8 : 0);
+      const prevHat = (this as any)._prevHat ?? 0;
+      if (hatState !== prevHat) {
+        if ((hatState & 1) !== (prevHat & 1)) this.emit("buttonEvent", { button: upBtn, pressed: up, timestamp });
+        if ((hatState & 2) !== (prevHat & 2)) this.emit("buttonEvent", { button: rightBtn, pressed: right, timestamp });
+        if ((hatState & 4) !== (prevHat & 4)) this.emit("buttonEvent", { button: downBtn, pressed: down, timestamp });
+        if ((hatState & 8) !== (prevHat & 8)) this.emit("buttonEvent", { button: leftBtn, pressed: left, timestamp });
+        (this as any)._prevHat = hatState;
       }
     }
   }

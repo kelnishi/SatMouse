@@ -407,7 +407,7 @@ var SatMouseConnection = class extends TypedEmitter {
 };
 
 // packages/client/src/utils/action-map.ts
-var FULL_AXES = ["tx", "ty", "tz", "rx", "ry", "rz"];
+var FULL_AXES = ["tx", "ty", "tz", "rx", "ry", "rz", "w"];
 var DEFAULT_ROUTES = [
   { source: "tx", target: "tx" },
   { source: "ty", target: "ty" },
@@ -438,35 +438,45 @@ function readAxis(data, axis) {
       return data.rotation.y;
     case "rz":
       return data.rotation.z;
+    case "w":
+      return data.w ?? 0;
     default:
       return 0;
   }
 }
-function writeAxis(t, r, axis, value) {
+function writeAxis(acc, axis, value) {
   const isNeg = axis.endsWith("-");
   const base = axis.replace(/[+-]$/, "");
   const sign = isNeg ? -1 : 1;
+  if (base === "w") {
+    acc.w += value * sign;
+    return;
+  }
   const group = base[0];
   const key = base[1];
-  if (group === "t") t[key] += value * sign;
-  else r[key] += value * sign;
+  if (group === "t") acc.t[key] += value * sign;
+  else acc.r[key] += value * sign;
 }
-function applyRoutes(data, routes, scale = 1) {
-  const t = { x: 0, y: 0, z: 0 };
-  const r = { x: 0, y: 0, z: 0 };
+function applyRoutes(data, routes, translateScale = 1, rotateScale = 1, wScale = 1) {
+  const acc = { t: { x: 0, y: 0, z: 0 }, r: { x: 0, y: 0, z: 0 }, w: 0 };
   for (const route of routes) {
     let value = readAxis(data, route.source);
     if (route.flip) value = -value;
+    const targetBase = route.target.replace(/[+-]$/, "");
+    const scale = targetBase === "w" ? wScale : targetBase[0] === "t" ? translateScale : rotateScale;
     value *= scale;
-    writeAxis(t, r, route.target, value);
+    writeAxis(acc, route.target, value);
   }
-  return { translation: t, rotation: r, timestamp: data.timestamp, deviceId: data.deviceId };
+  return { translation: acc.t, rotation: acc.r, w: acc.w || void 0, timestamp: data.timestamp, deviceId: data.deviceId };
 }
 
 // packages/client/src/utils/config.ts
 var DEFAULT_CONFIG = {
   routes: DEFAULT_ROUTES,
-  scale: 1e-3,
+  buttonRoutes: [],
+  translateScale: 1e-3,
+  rotateScale: 1e-3,
+  wScale: 1e-3,
   deadZone: 0,
   dominant: false,
   lockPosition: false,
@@ -500,6 +510,7 @@ function mergeConfig(base, partial) {
     ...base,
     ...partial,
     routes: partial.routes ?? [...base.routes],
+    buttonRoutes: partial.buttonRoutes ?? [...base.buttonRoutes],
     devices: { ...base.devices }
   };
   if (partial.devices) {
@@ -525,7 +536,10 @@ function resolveDeviceConfig(config, deviceId) {
   return {
     ...config,
     routes: deviceOverride.routes ?? config.routes,
-    scale: deviceOverride.scale ?? config.scale,
+    buttonRoutes: deviceOverride.buttonRoutes ?? config.buttonRoutes,
+    translateScale: deviceOverride.translateScale ?? config.translateScale,
+    rotateScale: deviceOverride.rotateScale ?? config.rotateScale,
+    wScale: deviceOverride.wScale ?? config.wScale,
     deadZone: deviceOverride.deadZone ?? config.deadZone,
     dominant: deviceOverride.dominant ?? config.dominant
   };
@@ -629,7 +643,10 @@ var InputManager = class extends TypedEmitter {
     const resolved = resolveDeviceConfig(this._config, deviceId);
     return {
       routes: resolved.routes,
-      scale: resolved.scale,
+      buttonRoutes: resolved.buttonRoutes,
+      translateScale: resolved.translateScale,
+      rotateScale: resolved.rotateScale,
+      wScale: resolved.wScale,
       deadZone: resolved.deadZone,
       dominant: resolved.dominant
     };
@@ -677,11 +694,15 @@ var InputManager = class extends TypedEmitter {
         tz: processed.translation.z,
         rx: processed.rotation.x,
         ry: processed.rotation.y,
-        rz: processed.rotation.z
+        rz: processed.rotation.z,
+        w: processed.w ?? 0
       });
       this.accDirty = true;
     });
-    connection2.on("buttonEvent", (event) => this.emit("buttonEvent", event));
+    connection2.on("buttonEvent", (event) => {
+      this.dispatchButtonKeys(event);
+      this.emit("buttonEvent", event);
+    });
     connection2.on("stateChange", (state, proto) => {
       this._state = state;
       this._protocol = proto;
@@ -695,7 +716,7 @@ var InputManager = class extends TypedEmitter {
   }
   flushAccumulator() {
     if (!this.accDirty) return;
-    const merged = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 };
+    const merged = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0, w: 0 };
     for (const acc of this.deviceAccumulators.values()) {
       merged.tx += acc.tx;
       merged.ty += acc.ty;
@@ -703,12 +724,14 @@ var InputManager = class extends TypedEmitter {
       merged.rx += acc.rx;
       merged.ry += acc.ry;
       merged.rz += acc.rz;
+      merged.w += acc.w;
     }
     this.deviceAccumulators.clear();
     this.accDirty = false;
     let data = {
       translation: { x: merged.tx, y: merged.ty, z: merged.tz },
       rotation: { x: merged.rx, y: merged.ry, z: merged.rz },
+      w: merged.w || void 0,
       timestamp: performance.now() * 1e3
     };
     if (this._config.lockPosition) {
@@ -749,7 +772,7 @@ var InputManager = class extends TypedEmitter {
     }
     const device = this.knownDevices.get(deviceId);
     const deviceRoutes = this.resolveRoutes(deviceId, device);
-    data = applyRoutes(data, deviceRoutes, cfg.scale);
+    data = applyRoutes(data, deviceRoutes, cfg.translateScale, cfg.rotateScale, cfg.wScale);
     return data;
   }
   /** Get the effective routes for a device: device config override > device axes metadata > global default */
@@ -763,6 +786,27 @@ var InputManager = class extends TypedEmitter {
     }
     if (device?.axes) return buildRoutes(device.axes);
     return DEFAULT_ROUTES;
+  }
+  /** Dispatch KeyboardEvents for button routes matching this button event */
+  dispatchButtonKeys(event) {
+    if (typeof document === "undefined") return;
+    const allRoutes = this.collectButtonRoutes();
+    for (const route of allRoutes) {
+      if (route.button === event.button) {
+        document.dispatchEvent(new KeyboardEvent(
+          event.pressed ? "keydown" : "keyup",
+          { key: route.key, code: route.code ?? "", bubbles: true }
+        ));
+      }
+    }
+  }
+  /** Gather all button routes from global config + all device configs */
+  collectButtonRoutes() {
+    const routes = [...this._config.buttonRoutes];
+    for (const devCfg of Object.values(this._config.devices)) {
+      if (devCfg.buttonRoutes) routes.push(...devCfg.buttonRoutes);
+    }
+    return routes;
   }
 };
 
@@ -922,6 +966,19 @@ var STYLES = `
   .reset-btn { background: none; border: 1px solid #1a4a8a; border-radius: 3px; color: #7f8c8d;
                font-size: 11px; padding: 3px 8px; cursor: pointer; margin-top: 4px; }
   .reset-btn:hover { color: #e0e0e0; border-color: #e74c3c; }
+  .btn-section { display: flex; flex-direction: column; gap: 4px; }
+  .btn-section-label { color: #7f8c8d; font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .btn-route { display: flex; gap: 6px; align-items: center; font-size: 11px; }
+  .btn-route .btn-idx { color: #7f8c8d; font-family: monospace; min-width: 32px; }
+  .btn-route .btn-arrow { color: #7f8c8d; }
+  .btn-route .btn-key { color: #3498db; font-family: monospace; }
+  .btn-route .btn-remove { cursor: pointer; color: #e74c3c; background: none; border: none;
+                           font-size: 11px; padding: 0 2px; font-family: inherit; }
+  .btn-route .btn-remove:hover { color: #ff6b6b; }
+  .btn-add { background: none; border: 1px dashed #1a4a8a; border-radius: 3px; color: #7f8c8d;
+             font-size: 11px; padding: 4px 8px; cursor: pointer; font-family: inherit; }
+  .btn-add:hover { color: #e0e0e0; border-color: #3498db; }
+  .btn-add.listening { color: #f39c12; border-color: #f39c12; border-style: solid; cursor: default; }
 </style>
 `;
 function mapSlider(v) {
@@ -1033,18 +1090,93 @@ var SatMouseDevices = class extends HTMLElement {
       routeGroup.appendChild(row);
     }
     controls.appendChild(routeGroup);
-    const sensRow = document.createElement("div");
-    sensRow.className = "slider-row";
-    const currentScale = cfg.scale ?? mgr.config.scale;
-    sensRow.innerHTML = `<label>Scale</label><input type="range" min="0" max="100" value="${Math.round(unmapSlider(currentScale))}"><span>${currentScale.toFixed(4)}</span>`;
-    const slider = sensRow.querySelector("input");
-    const span = sensRow.querySelector("span");
-    slider.addEventListener("input", () => {
-      const v = mapSlider(+slider.value);
-      span.textContent = v.toFixed(4);
-      mgr.updateDeviceConfig(device.id, { scale: v });
+    for (const [label, key, globalKey] of [
+      ["Trans", "translateScale", "translateScale"],
+      ["Rot", "rotateScale", "rotateScale"],
+      ["W", "wScale", "wScale"]
+    ]) {
+      const row = document.createElement("div");
+      row.className = "slider-row";
+      const val = cfg[key] ?? mgr.config[globalKey];
+      row.innerHTML = `<label>${label}</label><input type="range" min="0" max="100" value="${Math.round(unmapSlider(val))}"><span>${val.toFixed(4)}</span>`;
+      const sl = row.querySelector("input");
+      const sp = row.querySelector("span");
+      sl.addEventListener("input", () => {
+        const v = mapSlider(+sl.value);
+        sp.textContent = v.toFixed(4);
+        mgr.updateDeviceConfig(device.id, { [key]: v });
+      });
+      controls.appendChild(row);
+    }
+    const btnSection = document.createElement("div");
+    btnSection.className = "btn-section";
+    const btnLabel = document.createElement("div");
+    btnLabel.className = "btn-section-label";
+    btnLabel.textContent = "Button Mappings";
+    btnSection.appendChild(btnLabel);
+    const buttonRoutes = cfg.buttonRoutes ?? [];
+    const labels = device.buttonLabels ?? [];
+    for (let i = 0; i < buttonRoutes.length; i++) {
+      const route = buttonRoutes[i];
+      const btnName = labels[route.button] ?? `Btn ${route.button}`;
+      const row = document.createElement("div");
+      row.className = "btn-route";
+      const idxSpan = document.createElement("span");
+      idxSpan.className = "btn-idx";
+      idxSpan.textContent = btnName;
+      row.appendChild(idxSpan);
+      const arrow = document.createElement("span");
+      arrow.className = "btn-arrow";
+      arrow.textContent = "\u2192";
+      row.appendChild(arrow);
+      const keySpan = document.createElement("span");
+      keySpan.className = "btn-key";
+      keySpan.textContent = route.key;
+      row.appendChild(keySpan);
+      const editBtn = document.createElement("button");
+      editBtn.className = "btn-remove";
+      editBtn.textContent = "\u270E";
+      editBtn.title = "Remap key";
+      const routeIdx = i;
+      editBtn.addEventListener("click", () => {
+        keySpan.textContent = "Press a key...";
+        keySpan.style.color = "#f39c12";
+        const onKey = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          document.removeEventListener("keydown", onKey, true);
+          const current = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
+          const updated = current.map(
+            (r, j) => j === routeIdx ? { ...r, key: e.key, code: e.code } : r
+          );
+          mgr.updateDeviceConfig(device.id, { buttonRoutes: updated });
+          this.refreshControls(panel, device);
+        };
+        document.addEventListener("keydown", onKey, true);
+      });
+      row.appendChild(editBtn);
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "btn-remove";
+      removeBtn.textContent = "\xD7";
+      removeBtn.title = "Remove";
+      removeBtn.addEventListener("click", () => {
+        const current = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
+        const updated = current.filter((_, j) => j !== routeIdx);
+        mgr.updateDeviceConfig(device.id, { buttonRoutes: updated });
+        this.refreshControls(panel, device);
+      });
+      row.appendChild(removeBtn);
+      btnSection.appendChild(row);
+    }
+    const addBtn = document.createElement("button");
+    addBtn.className = "btn-add";
+    addBtn.textContent = "+ Add Button Mapping";
+    addBtn.addEventListener("click", () => {
+      if (addBtn.classList.contains("listening")) return;
+      this.startButtonListen(addBtn, mgr, device, panel);
     });
-    controls.appendChild(sensRow);
+    btnSection.appendChild(addBtn);
+    controls.appendChild(btnSection);
     const resetBtn = document.createElement("button");
     resetBtn.className = "reset-btn";
     resetBtn.textContent = "Restore Defaults";
@@ -1070,6 +1202,42 @@ var SatMouseDevices = class extends HTMLElement {
     const base = this.getRoutes(deviceId, deviceAxes);
     const updated = base.map((r, j) => j === index ? { ...r, ...patch } : { ...r });
     this.manager.updateDeviceConfig(deviceId, { routes: updated });
+  }
+  startButtonListen(btn, mgr, device, panel) {
+    btn.classList.add("listening");
+    btn.textContent = "Press a device button...";
+    const onButton = (event) => {
+      if (!event.pressed) return;
+      mgr.off("buttonEvent", onButton);
+      const capturedButton = event.button;
+      btn.textContent = `Btn ${capturedButton} \u2192 Press a key...`;
+      const onKey = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        document.removeEventListener("keydown", onKey, true);
+        const route = {
+          button: capturedButton,
+          key: e.key,
+          code: e.code
+        };
+        const current = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
+        const updated = current.filter((r) => r.button !== capturedButton);
+        updated.push(route);
+        mgr.updateDeviceConfig(device.id, { buttonRoutes: updated });
+        this.refreshControls(panel, device);
+      };
+      document.addEventListener("keydown", onKey, true);
+    };
+    mgr.on("buttonEvent", onButton);
+    const onCancel = (e) => {
+      if (e.key === "Escape") {
+        mgr.off("buttonEvent", onButton);
+        document.removeEventListener("keydown", onCancel, true);
+        btn.classList.remove("listening");
+        btn.textContent = "+ Add Button Mapping";
+      }
+    };
+    document.addEventListener("keydown", onCancel, true);
   }
   removeDevice(device) {
     this.shadowRoot.getElementById(`dev-${device.id}`)?.remove();

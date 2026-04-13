@@ -1,0 +1,20 @@
+{
+  "name": "N64 Retrolink",
+  "vendorId": "0x0079",
+  "productId": "0x0006",
+  "note": "Retrolink N64 USB controller. Source: carldanley/node-gamepad.",
+  "axisFormat": "uint8",
+  "axes": [
+    { "sourceAxis": 0, "target": "tx", "label": "Stick X", "deadZone": 0.15 },
+    { "sourceAxis": 1, "target": "tz", "label": "Stick Y", "invert": true, "deadZone": 0.15 }
+  ],
+  "buttonOffset": 5,
+  "buttons": [
+    { "sourceButton": 2, "targetButton": 0, "label": "A" },
+    { "sourceButton": 4, "targetButton": 1, "label": "B" },
+    { "sourceButton": 3, "targetButton": 2, "label": "Z" },
+    { "sourceButton": 0, "targetButton": 3, "label": "L" },
+    { "sourceButton": 1, "targetButton": 4, "label": "R" },
+    { "sourceButton": 5, "targetButton": 5, "label": "Start" }
+  ]
+}

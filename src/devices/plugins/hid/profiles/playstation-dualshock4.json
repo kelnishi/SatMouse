@@ -1,0 +1,38 @@
+{
+  "name": "DualShock 4",
+  "vendorId": "0x054c",
+  "productId": "0x05c4",
+  "note": "PS4 DualShock 4 (CUH-ZCT1). USB report 0x01. Also matches CUH-ZCT2 (0x09CC) via vendor wildcard fallback.",
+  "axisFormat": "uint8",
+  "axisOffset": 1,
+  "buttonOffset": 5,
+  "buttonMask": "0xFFF0",
+  "hat": {
+    "byte": 5,
+    "mask": 15,
+    "buttons": [12, 13, 14, 15],
+    "labels": ["D-pad Up", "D-pad Right", "D-pad Down", "D-pad Left"]
+  },
+  "axes": [
+    { "sourceAxis": 0, "target": "tx", "label": "Left Stick X", "deadZone": 0.15 },
+    { "sourceAxis": 1, "target": "tz", "label": "Left Stick Y", "invert": true, "deadZone": 0.15 },
+    { "sourceAxis": 2, "target": "rz", "label": "Right Stick X", "deadZone": 0.15 },
+    { "sourceAxis": 3, "target": "rx", "label": "Right Stick Y", "deadZone": 0.15 },
+    { "sourceAxis": 7, "target": "ty", "label": "L2", "deadZone": 0.05, "unipolar": true },
+    { "sourceAxis": 8, "target": "ry", "label": "R2", "deadZone": 0.05, "unipolar": true }
+  ],
+  "buttons": [
+    { "sourceButton": 4, "targetButton": 0, "label": "Square" },
+    { "sourceButton": 5, "targetButton": 1, "label": "Cross" },
+    { "sourceButton": 6, "targetButton": 2, "label": "Circle" },
+    { "sourceButton": 7, "targetButton": 3, "label": "Triangle" },
+    { "sourceButton": 8, "targetButton": 4, "label": "L1" },
+    { "sourceButton": 9, "targetButton": 5, "label": "R1" },
+    { "sourceButton": 10, "targetButton": 6, "label": "L2" },
+    { "sourceButton": 11, "targetButton": 7, "label": "R2" },
+    { "sourceButton": 12, "targetButton": 8, "label": "Share" },
+    { "sourceButton": 13, "targetButton": 9, "label": "Options" },
+    { "sourceButton": 14, "targetButton": 10, "label": "L3" },
+    { "sourceButton": 15, "targetButton": 11, "label": "R3" }
+  ]
+}

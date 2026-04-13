@@ -1,11 +1,27 @@
 import { DEFAULT_ROUTES, type AxisRoute } from "./action-map.js";
 
+/** Maps a device button to a keyboard key */
+export interface ButtonRoute {
+  /** Device button index */
+  button: number;
+  /** Keyboard key value (KeyboardEvent.key, e.g., "a", "Shift", "ArrowUp") */
+  key: string;
+  /** Keyboard code (KeyboardEvent.code, e.g., "KeyA", "ShiftLeft"). Optional. */
+  code?: string;
+}
+
 /** Per-device configuration */
 export interface DeviceConfig {
   /** Axis routing — each entry maps a device input to an output with optional flip */
   routes?: AxisRoute[];
-  /** Scale multiplier applied to all axes (default: 1) */
-  scale?: number;
+  /** Button-to-key mappings */
+  buttonRoutes?: ButtonRoute[];
+  /** Scale multiplier for translation axes (tx, ty, tz) */
+  translateScale?: number;
+  /** Scale multiplier for rotation axes (rx, ry, rz) */
+  rotateScale?: number;
+  /** Scale multiplier for W axis */
+  wScale?: number;
   /** Dead zone threshold (0-1). Values below this are zeroed. */
   deadZone?: number;
   /** Only pass the strongest axis, zero all others */
@@ -16,8 +32,14 @@ export interface DeviceConfig {
 export interface InputConfig {
   /** Default axis routes (used when device has no override) */
   routes: AxisRoute[];
-  /** Default scale */
-  scale: number;
+  /** Default button-to-key mappings */
+  buttonRoutes: ButtonRoute[];
+  /** Scale multiplier for translation axes */
+  translateScale: number;
+  /** Scale multiplier for rotation axes */
+  rotateScale: number;
+  /** Scale multiplier for W axis */
+  wScale: number;
   /** Dead zone threshold */
   deadZone: number;
   /** Dominant axis mode */
@@ -32,7 +54,10 @@ export interface InputConfig {
 
 export const DEFAULT_CONFIG: InputConfig = {
   routes: DEFAULT_ROUTES,
-  scale: 0.001,
+  buttonRoutes: [],
+  translateScale: 0.001,
+  rotateScale: 0.001,
+  wScale: 0.001,
   deadZone: 0,
   dominant: false,
   lockPosition: false,
@@ -67,6 +92,7 @@ export function mergeConfig(base: InputConfig, partial: Partial<InputConfig>): I
     ...base,
     ...partial,
     routes: partial.routes ?? [...base.routes],
+    buttonRoutes: partial.buttonRoutes ?? [...base.buttonRoutes],
     devices: { ...base.devices },
   };
 
@@ -99,7 +125,10 @@ export function resolveDeviceConfig(config: InputConfig, deviceId: string): Inpu
   return {
     ...config,
     routes: deviceOverride.routes ?? config.routes,
-    scale: deviceOverride.scale ?? config.scale,
+    buttonRoutes: deviceOverride.buttonRoutes ?? config.buttonRoutes,
+    translateScale: deviceOverride.translateScale ?? config.translateScale,
+    rotateScale: deviceOverride.rotateScale ?? config.rotateScale,
+    wScale: deviceOverride.wScale ?? config.wScale,
     deadZone: deviceOverride.deadZone ?? config.deadZone,
     dominant: deviceOverride.dominant ?? config.dominant,
   };

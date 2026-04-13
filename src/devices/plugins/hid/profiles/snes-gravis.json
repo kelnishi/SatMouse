@@ -1,0 +1,19 @@
+{
+  "name": "Gravis GamePad",
+  "vendorId": "0x0428",
+  "productId": "0x4001",
+  "note": "Gravis SNES-style USB gamepad. Source: carldanley/node-gamepad.",
+  "axisFormat": "uint8",
+  "axes": [],
+  "buttonOffset": 2,
+  "buttons": [
+    { "sourceButton": 0, "targetButton": 0, "label": "Y" },
+    { "sourceButton": 1, "targetButton": 1, "label": "B" },
+    { "sourceButton": 2, "targetButton": 2, "label": "A" },
+    { "sourceButton": 3, "targetButton": 3, "label": "X" },
+    { "sourceButton": 4, "targetButton": 4, "label": "L" },
+    { "sourceButton": 5, "targetButton": 5, "label": "R" },
+    { "sourceButton": 8, "targetButton": 6, "label": "Select" },
+    { "sourceButton": 9, "targetButton": 7, "label": "Start" }
+  ]
+}
