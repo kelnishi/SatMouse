@@ -620,21 +620,42 @@
     import { InputManager } from "https://unpkg.com/@kelnishi/satmouse-client/dist/utils/index.js";
     import { registerSatMouse } from "https://unpkg.com/@kelnishi/satmouse-client/dist/elements/index.js";
 
-    const connection = new SatMouseConnection({
-      maxRetries: 1,
-      reconnectDelay: 5000,
-    });
+    // Check if we're returning from a negotiate callback
+    const params = new URLSearchParams(globalThis.location.search);
+    const negotiatedIp = params.get("ip");
+    const negotiatedWsPort = params.get("wsPort");
+    const negotiatedCertHash = params.get("certHash");
 
-    // If connection fails, show hint about cert trust
+    const connectOptions = { maxRetries: 1, reconnectDelay: 5000 };
+
+    // If we have negotiate results, use them directly
+    if (negotiatedIp && negotiatedWsPort) {
+      connectOptions.wsUrl = `ws://${negotiatedIp}:${negotiatedWsPort}/spatial`;
+      if (negotiatedCertHash) {
+        connectOptions.wtUrl = `https://${negotiatedIp}:${params.get("wtPort") || "18946"}`;
+        connectOptions.certHash = negotiatedCertHash;
+      }
+      // Clean the URL
+      history.replaceState(null, "", location.pathname);
+    }
+
+    const connection = new SatMouseConnection(connectOptions);
+
+    // If connection fails, show negotiate button for Safari
     connection.on("stateChange", (state) => {
       const toolbar = document.querySelector(".demo-toolbar");
       if (!toolbar) return;
       const existing = toolbar.querySelector(".cert-hint");
       if (state === "failed" && !existing) {
-        const hint = document.createElement("span");
+        const hint = document.createElement("button");
         hint.className = "cert-hint";
-        hint.style.cssText = "color: #f39c12; font-size: 11px;";
-        hint.textContent = "Open Web Client from the SatMouse tray to trust the local certificate.";
+        hint.style.cssText = "color: #f39c12; font-size: 11px; background: none; border: 1px solid #f39c12; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-family: inherit;";
+        hint.textContent = "Connect via SatMouse";
+        hint.addEventListener("click", () => {
+          const origin = globalThis.location.origin;
+          const callback = globalThis.location.pathname;
+          globalThis.location.href = `satmouse://negotiate?origin=${encodeURIComponent(origin)}&callback=${encodeURIComponent(callback)}`;
+        });
         toolbar.appendChild(hint);
       } else if (state === "connected" && existing) {
         existing.remove();

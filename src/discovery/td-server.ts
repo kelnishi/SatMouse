@@ -41,6 +41,10 @@ export class TDServer {
     }
   }
 
+  get httpsServerInstance(): HttpsServer | null {
+    return this.httpsServer;
+  }
+
   start(): Server {
     const handler = (req: IncomingMessage, res: ServerResponse) => this.handleRequest(req, res);
 

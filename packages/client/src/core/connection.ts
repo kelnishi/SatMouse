@@ -119,7 +119,12 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
       }
       if (!resolved) {
         this.emit("error", new Error("Failed to fetch Thing Description"));
-        wsUrl = "ws://127.0.0.1:18945/spatial";
+        // On HTTPS pages, ws:// is blocked as mixed content.
+        // Try wss:// on the HTTPS port; fall back to ws:// for HTTP pages.
+        const isSecurePage = typeof globalThis.location !== "undefined" && globalThis.location.protocol === "https:";
+        wsUrl = isSecurePage
+          ? "wss://127.0.0.1:18947/spatial"
+          : "ws://127.0.0.1:18945/spatial";
       }
     }
 

@@ -318,7 +318,8 @@ var SatMouseConnection = class extends TypedEmitter {
       }
       if (!resolved) {
         this.emit("error", new Error("Failed to fetch Thing Description"));
-        wsUrl = "ws://127.0.0.1:18945/spatial";
+        const isSecurePage = typeof globalThis.location !== "undefined" && globalThis.location.protocol === "https:";
+        wsUrl = isSecurePage ? "wss://127.0.0.1:18947/spatial" : "ws://127.0.0.1:18945/spatial";
       }
     }
     for (const proto of this.options.transports) {
