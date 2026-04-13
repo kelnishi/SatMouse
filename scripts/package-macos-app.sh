@@ -132,6 +132,26 @@ LAUNCHER
   cp src/extension/com.kelnishi.SatMouse.json "$RESOURCES/" 2>/dev/null || true
 fi
 
+# Re-sign the entire bundle after modifications.
+# Safari requires the .appex and parent .app to have matching signatures.
+# Adding resources invalidates the Xcode signature, so we re-sign everything.
+echo "Re-signing bundle..."
+# Determine signing identity from the Xcode-built binary
+SIGN_ID=$(codesign -dvv "$APP/Contents/MacOS/SatMouse" 2>&1 | grep "Authority=" | head -1 | sed 's/Authority=//')
+if [ -z "$SIGN_ID" ] || [ "$SIGN_ID" = "-" ]; then
+  SIGN_ID="-"  # Ad-hoc fallback
+fi
+echo "  Signing identity: $SIGN_ID"
+
+# Sign Node binary with entitlements
+codesign --force --sign "$SIGN_ID" --entitlements /tmp/satmouse-node.entitlements "$RESOURCES/bin/node" 2>/dev/null || true
+
+# Re-sign the .appex (nested)
+codesign --force --sign "$SIGN_ID" "$APP/Contents/PlugIns/SatMouse Extension.appex" 2>/dev/null || true
+
+# Re-sign the parent .app (must be last)
+codesign --force --sign "$SIGN_ID" "$APP" 2>/dev/null || true
+
 # Register with Launch Services (satmouse:// URL scheme)
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" 2>/dev/null || true
 
