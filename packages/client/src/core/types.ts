@@ -90,8 +90,6 @@ export interface ConnectOptions {
   wsUrl?: string;
   /** Direct WebTransport URL (skips discovery) */
   wtUrl?: string;
-  /** Safari extension ID for extension transport */
-  extensionId?: string;
   /** Certificate hash for self-signed WebTransport certs (base64) */
   certHash?: string;
   /** Preferred transport order. Default: ["webtransport", "websocket"] */

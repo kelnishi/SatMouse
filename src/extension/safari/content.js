@@ -1,60 +1,42 @@
 /**
- * SatMouse Extension — Content Script
+ * SatMouse Safari Extension — Content Script
  *
- * Injected into web pages. Bridges between the page's JavaScript
- * and the extension's background service worker.
+ * Bridges between web pages and the extension's background script.
+ * The background connects to the SatMouse bridge via WebSocket
+ * (extensions bypass mixed-content restrictions).
  *
- * The page communicates via window.postMessage, the content script
- * relays to browser.runtime via a persistent port.
+ * Pages detect the extension via window.__satmouseExtensionAvailable
+ * and communicate via window.postMessage.
  */
 
 (function() {
-  // Only activate if the page requests it
-  let port = null;
+  var port = null;
 
-  window.addEventListener("message", (event) => {
+  window.addEventListener("message", function(event) {
     if (event.source !== window) return;
     if (!event.data || event.data.target !== "satmouse-extension") return;
 
-    const msg = event.data;
-
-    if (msg.action === "connect") {
-      if (port) return; // Already connected
+    if (event.data.action === "connect") {
+      if (port) return;
       port = browser.runtime.connect({ name: "satmouse-page" });
-
-      port.onMessage.addListener((response) => {
-        window.postMessage({
-          source: "satmouse-extension",
-          ...response
-        }, "*");
+      port.onMessage.addListener(function(msg) {
+        window.postMessage({ source: "satmouse-extension", type: msg.type, data: msg.data }, "*");
       });
-
-      port.onDisconnect.addListener(() => {
+      port.onDisconnect.addListener(function() {
         port = null;
-        window.postMessage({
-          source: "satmouse-extension",
-          type: "disconnected"
-        }, "*");
+        window.postMessage({ source: "satmouse-extension", type: "disconnected" }, "*");
       });
-
-      // Subscribe to spatial data
       port.postMessage({ action: "subscribe" });
-
-      window.postMessage({
-        source: "satmouse-extension",
-        type: "connected"
-      }, "*");
     }
 
-    if (msg.action === "disconnect") {
+    if (event.data.action === "disconnect") {
       if (port) { port.disconnect(); port = null; }
     }
   });
 
-  // Announce that the extension is available (both ways)
-  window.__satmouseExtensionAvailable = true;
-  window.postMessage({
-    source: "satmouse-extension",
-    type: "available"
-  }, "*");
+  // Inject flag into page context (content scripts are isolated)
+  var s = document.createElement("script");
+  s.textContent = "window.__satmouseExtensionAvailable=true;";
+  (document.head || document.documentElement).appendChild(s);
+  s.remove();
 })();

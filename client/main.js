@@ -256,18 +256,8 @@ var ExtensionAdapter = class {
   onClose = null;
   onError = null;
   messageHandler = null;
-  /** Check if the extension content script is present */
   static isAvailable() {
     return !!globalThis.__satmouseExtensionAvailable;
-  }
-  /** Call early to start listening for the extension's availability signal */
-  static listen() {
-    if (typeof globalThis.addEventListener !== "function") return;
-    globalThis.addEventListener("message", (event) => {
-      if (event.data?.source === "satmouse-extension" && event.data?.type === "available") {
-        globalThis.__satmouseExtensionAvailable = true;
-      }
-    });
   }
   async connect() {
     if (typeof globalThis.postMessage !== "function") {
@@ -277,46 +267,29 @@ var ExtensionAdapter = class {
       const timeout = setTimeout(() => {
         this.close();
         reject(new Error("Extension connection timeout"));
-      }, 3e3);
+      }, 5e3);
       this.messageHandler = (event) => {
         if (event.data?.source !== "satmouse-extension") return;
         const msg = event.data;
-        if (msg.type === "connected") {
+        if ((msg.type === "connected" || msg.type === "bridgeConnected") && timeout) {
           clearTimeout(timeout);
           resolve();
-          return;
         }
         if (msg.type === "disconnected") {
           this.onClose?.();
-          return;
-        }
-        if (msg.type === "error") {
-          this.onError?.(new Error(msg.message ?? "Extension error"));
-          return;
         }
         if (msg.type === "spatialData" && msg.data) {
-          const d = msg.data;
-          if (d.translation && d.rotation) {
-            this.onSpatialData?.(d);
-          }
-          return;
+          this.onSpatialData?.(msg.data);
         }
         if (msg.type === "buttonEvent" && msg.data) {
-          const d = msg.data;
-          if (typeof d.button === "number" && typeof d.pressed === "boolean") {
-            this.onButtonEvent?.(d);
-          }
-          return;
+          this.onButtonEvent?.(msg.data);
         }
         if (msg.type === "deviceStatus" && msg.data) {
           this.onDeviceStatus?.(msg.data.event, msg.data.device);
         }
       };
       globalThis.addEventListener("message", this.messageHandler);
-      globalThis.postMessage({
-        target: "satmouse-extension",
-        action: "connect"
-      }, "*");
+      globalThis.postMessage({ target: "satmouse-extension", action: "connect" }, "*");
     });
   }
   close() {
@@ -324,13 +297,9 @@ var ExtensionAdapter = class {
       globalThis.removeEventListener("message", this.messageHandler);
       this.messageHandler = null;
     }
-    globalThis.postMessage({
-      target: "satmouse-extension",
-      action: "disconnect"
-    }, "*");
+    globalThis.postMessage({ target: "satmouse-extension", action: "disconnect" }, "*");
   }
 };
-ExtensionAdapter.listen();
 
 // packages/client/src/core/connection.ts
 function parseSatMouseUri(uri) {
