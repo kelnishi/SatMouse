@@ -4,12 +4,32 @@ set -euo pipefail
 # Creates SatMouse.app bundle from the SEA binary in dist/
 # Usage: ./scripts/package-macos-app.sh [binary_path]
 
-NODE_BIN="${1:-$(command -v node)}"
 APP="dist/SatMouse.app"
 BUNDLE_ID="com.kelnishi.SatMouse"
 VERSION="${SATMOUSE_VERSION:-0.1.0}"
+NODE_VERSION="22.16.0"
+
+# Use provided binary, or download official Node.js LTS (statically linked)
+if [ -n "${1:-}" ]; then
+  NODE_BIN="$1"
+elif [ -f "dist/node-official" ]; then
+  NODE_BIN="dist/node-official"
+else
+  echo "Downloading official Node.js $NODE_VERSION (statically linked)..."
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    arm64|aarch64) NODE_ARCH="arm64" ;;
+    x86_64|x64)    NODE_ARCH="x64" ;;
+    *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+  esac
+  curl -sL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-darwin-${NODE_ARCH}.tar.gz" \
+    | tar xz --strip-components=2 -C dist/ "node-v${NODE_VERSION}-darwin-${NODE_ARCH}/bin/node"
+  mv dist/node dist/node-official
+  NODE_BIN="dist/node-official"
+fi
 
 echo "=== Packaging SatMouse.app ==="
+echo "  Node: $NODE_BIN ($(otool -L "$NODE_BIN" 2>/dev/null | grep -c '/opt/homebrew' || echo 0) Homebrew deps)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
