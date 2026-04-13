@@ -628,12 +628,14 @@
 
     const connectOptions = { maxRetries: 1, reconnectDelay: 5000 };
 
-    // If we have negotiate results, use them directly
-    if (negotiatedIp && negotiatedWsPort) {
-      connectOptions.wsUrl = `ws://${negotiatedIp}:${negotiatedWsPort}/spatial`;
-      if (negotiatedCertHash) {
-        connectOptions.wtUrl = `https://${negotiatedIp}:${params.get("wtPort") || "18946"}`;
-        connectOptions.certHash = negotiatedCertHash;
+    // If we have negotiate results, connect directly with cert hash
+    if (negotiatedIp && negotiatedCertHash) {
+      const wtPort = params.get("wtPort") || "18946";
+      connectOptions.wtUrl = `https://${negotiatedIp}:${wtPort}`;
+      connectOptions.certHash = negotiatedCertHash;
+      // Only use ws:// on non-HTTPS pages (Safari blocks mixed content)
+      if (globalThis.location.protocol !== "https:") {
+        connectOptions.wsUrl = `ws://${negotiatedIp}:${negotiatedWsPort}/spatial`;
       }
       // Clean the URL
       history.replaceState(null, "", location.pathname);
@@ -650,11 +652,14 @@
         const hint = document.createElement("button");
         hint.className = "cert-hint";
         hint.style.cssText = "color: #f39c12; font-size: 11px; background: none; border: 1px solid #f39c12; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-family: inherit;";
-        hint.textContent = "Connect via SatMouse";
+        hint.textContent = "Connect to SatMouse";
         hint.addEventListener("click", () => {
+          // Navigate directly to the bridge's negotiate endpoint.
+          // Top-level navigation to localhost is allowed even from HTTPS pages.
+          // The bridge redirects back with connection details as query params.
           const origin = globalThis.location.origin;
           const callback = globalThis.location.pathname;
-          globalThis.location.href = `satmouse://negotiate?origin=${encodeURIComponent(origin)}&callback=${encodeURIComponent(callback)}`;
+          globalThis.location.href = `http://127.0.0.1:18945/negotiate?origin=${encodeURIComponent(origin)}&callback=${encodeURIComponent(callback)}`;
         });
         toolbar.appendChild(hint);
       } else if (state === "connected" && existing) {
