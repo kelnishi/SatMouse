@@ -17,6 +17,7 @@ xcodebuild -project "$XCODE_PROJECT" \
   -scheme "SatMouse" -configuration Release \
   -derivedDataPath src/extension/xcode/build \
   CODE_SIGN_IDENTITY="-" CODE_SIGNING_ALLOWED=YES \
+  CODE_SIGN_ENTITLEMENTS="SatMouse/SatMouse.entitlements" \
   -quiet 2>&1 || { echo "Xcode build failed"; exit 1; }
 
 # Copy Xcode output as the base .app
@@ -50,6 +51,26 @@ RESOURCES="$APP/Contents/Resources"
 mkdir -p "$RESOURCES/bin"
 cp "$NODE_BIN" "$RESOURCES/bin/node"
 chmod +x "$RESOURCES/bin/node"
+
+# Sign Node binary with entitlements (network.server for port binding, JIT for V8)
+cat > /tmp/satmouse-node.entitlements << 'ENTITLEMENTS'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>
+ENTITLEMENTS
+codesign --force --sign - --entitlements /tmp/satmouse-node.entitlements "$RESOURCES/bin/node" 2>/dev/null || true
+rm -f /tmp/satmouse-node.entitlements
 
 # JS bundles
 cp dist/main.js "$RESOURCES/main.cjs"
