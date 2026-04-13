@@ -637,8 +637,11 @@
       if (globalThis.location.protocol !== "https:") {
         connectOptions.wsUrl = `ws://${negotiatedIp}:${negotiatedWsPort}/spatial`;
       }
+      console.log("[SatMouse Demo] Negotiate result:", { ip: negotiatedIp, wtPort, certHash: negotiatedCertHash, hasWebTransport: typeof globalThis.WebTransport !== "undefined" });
       // Clean the URL
       history.replaceState(null, "", location.pathname);
+    } else if (negotiatedIp) {
+      console.warn("[SatMouse Demo] Negotiate returned ip but no certHash — WebTransport unavailable");
     }
 
     const connection = new SatMouseConnection(connectOptions);
