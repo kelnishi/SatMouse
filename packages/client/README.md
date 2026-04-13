@@ -2,13 +2,14 @@
 
 Client SDK for [SatMouse](https://kelnishi.github.io/SatMouse/) — stream 6DOF spatial input from SpaceMouse and other devices to web apps and PWAs.
 
-Three tree-shakeable modules:
+Four tree-shakeable modules:
 
 | Module | Import | Purpose |
 |---|---|---|
-| **core** | `@kelnishi/satmouse-client` | Connection, discovery, binary decode. Zero dependencies. |
-| **utils** | `@kelnishi/satmouse-client/utils` | InputManager, transforms, per-device config, action mapping, persistence |
-| **react** | `@kelnishi/satmouse-client/react` | Provider, hooks, headless components |
+| **core** | `@kelnishi/satmouse-client` | `SatMouseConnection`, discovery, binary decode. Zero dependencies. |
+| **utils** | `@kelnishi/satmouse-client/utils` | `InputManager` — per-device axis routing, scale, button-to-key mapping, persistence. |
+| **react** | `@kelnishi/satmouse-client/react` | `<SatMouseProvider>`, `useSpatialData()`, `useButtonEvent()`, components. |
+| **elements** | `@kelnishi/satmouse-client/elements` | Web Components: `<satmouse-status>`, `<satmouse-devices>`, `<satmouse-debug>`. |
 
 ## Quick Start
 
@@ -27,7 +28,7 @@ const manager = new InputManager();
 manager.addConnection(connection);
 
 manager.onSpatialData((data) => {
-  console.log(data.translation, data.rotation);
+  console.log(data.translation, data.rotation, data.w);
 });
 
 await connection.connect();
@@ -48,62 +49,80 @@ function App() {
 
 function Scene() {
   const data = useSpatialData();
-  // data.translation.x/y/z, data.rotation.x/y/z
+  // data.translation.x/y/z, data.rotation.x/y/z, data.w
 }
+```
+
+### Web Components
+
+```html
+<script type="module">
+  import { SatMouseConnection } from "@kelnishi/satmouse-client";
+  import { InputManager } from "@kelnishi/satmouse-client/utils";
+  import { registerSatMouse } from "@kelnishi/satmouse-client/elements";
+
+  const connection = new SatMouseConnection();
+  const manager = new InputManager();
+  manager.addConnection(connection);
+  registerSatMouse(manager);
+  await connection.connect();
+</script>
+
+<satmouse-status></satmouse-status>
+<satmouse-devices></satmouse-devices>
+<satmouse-debug></satmouse-debug>
 ```
 
 ## Per-Device Configuration
 
+Axis routing with per-device flip, scale, and remapping:
+
 ```typescript
 const manager = new InputManager({
-  sensitivity: { translation: 0.001, rotation: 0.001 },
+  translateScale: 0.001,
+  rotateScale: 0.001,
+  wScale: 0.001,
   devices: {
-    "hid-054c-*": { sensitivity: { translation: 0.002 } },
-    "spacemouse-c635": { flip: { rz: false } },
+    "cnx-*": {
+      routes: [
+        { source: "tx", target: "tx" },
+        { source: "ty", target: "ty", flip: true },
+        { source: "tz", target: "tz", flip: true },
+        { source: "rx", target: "rx" },
+        { source: "ry", target: "ry", flip: true },
+        { source: "rz", target: "rz", flip: true },
+      ],
+    },
   },
 });
 
-// Query devices and their resolved config
-const devices = manager.getDevicesWithConfig();
-
-// Update per-device
-manager.updateDeviceConfig("spacemouse-c635", {
-  sensitivity: { rotation: 0.005 },
-});
+// Update per-device at runtime
+manager.updateDeviceConfig("cnx-c635", { translateScale: 0.0005 });
 ```
 
-## Action Mapping
+## Button-to-Key Mapping
 
-Remap input axes to named actions. Default passes through 1:1.
+Map device buttons to keyboard events:
 
 ```typescript
-import { InputManager, swapActions, DEFAULT_ACTION_MAP } from "@kelnishi/satmouse-client/utils";
-
-// Swap ty and tz
-const manager = new InputManager({
-  actionMap: swapActions(DEFAULT_ACTION_MAP, "ty", "tz"),
-});
-
-// Per-device remapping
 manager.updateDeviceConfig("hid-054c-*", {
-  actionMap: {
-    tx: { source: "tx" },
-    tz: { source: "ty", invert: true },
-    ry: { source: "rx", scale: 2.0 },
-  },
+  buttonRoutes: [
+    { button: 1, key: " ", code: "Space" },     // Cross → Space
+    { button: 2, key: "Escape", code: "Escape" }, // Circle → Escape
+  ],
 });
 
-// Named action values
-manager.onActionValues((values) => {
-  scene.pan(values.tx, values.ty);
-  scene.zoom(values.tz);
+// Button presses dispatch KeyboardEvent on document
+// Also available as raw events:
+manager.onButtonEvent((event) => {
+  console.log(`Button ${event.button} ${event.pressed ? "pressed" : "released"}`);
 });
 ```
 
 ## Connection Options
 
 ```typescript
-// Auto-discover via Thing Description
+// Auto-discover via Thing Description (default: localhost:18945)
 new SatMouseConnection();
 
 // Direct URL
