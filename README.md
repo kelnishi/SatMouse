@@ -311,6 +311,7 @@ npm run build:client
 | Endpoint | Protocol | Purpose |
 |---|---|---|
 | `http://localhost:18945/td.json` | HTTP | WoT Thing Description |
+| `https://localhost:18947/td.json` | HTTPS | WoT Thing Description (for HTTPS clients) |
 | `http://localhost:18945/client/` | HTTP | Reference web client |
 | `ws://localhost:18945/spatial` | WebSocket | Spatial data stream (fallback) |
 | `https://localhost:18946` | WebTransport | Spatial data stream (primary) |

@@ -91,18 +91,29 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
     }
 
     if (!wtUrl && !wsUrl) {
-      const tdUrl =
-        this.options.tdUrl ?? "http://localhost:18945/td.json";
+      const tdUrl = this.options.tdUrl;
+      // Try HTTPS first (works from HTTPS pages), fall back to HTTP
+      const tdUrls = tdUrl
+        ? [tdUrl]
+        : ["https://localhost:18947/td.json", "http://localhost:18945/td.json"];
 
-      try {
-        const td = await fetchThingDescription(tdUrl);
-        const endpoints = resolveEndpoints(td);
-        wtUrl = endpoints.webtransport?.url;
-        wsUrl = endpoints.websocket?.url;
-        certHash = certHash ?? endpoints.webtransport?.certHash;
-        this.deviceInfoUrl = endpoints.deviceInfoUrl ?? null;
-      } catch (err) {
-        this.emit("error", err instanceof Error ? err : new Error(String(err)));
+      let resolved = false;
+      for (const url of tdUrls) {
+        try {
+          const td = await fetchThingDescription(url);
+          const endpoints = resolveEndpoints(td);
+          wtUrl = endpoints.webtransport?.url;
+          wsUrl = endpoints.websocket?.url;
+          certHash = certHash ?? endpoints.webtransport?.certHash;
+          this.deviceInfoUrl = endpoints.deviceInfoUrl ?? null;
+          resolved = true;
+          break;
+        } catch {
+          // Try next URL
+        }
+      }
+      if (!resolved) {
+        this.emit("error", new Error("Failed to fetch Thing Description"));
         wsUrl = "ws://localhost:18945/spatial";
       }
     }

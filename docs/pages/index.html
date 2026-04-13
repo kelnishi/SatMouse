@@ -620,7 +620,12 @@
     import { InputManager } from "https://unpkg.com/@kelnishi/satmouse-client/dist/utils/index.js";
     import { registerSatMouse } from "https://unpkg.com/@kelnishi/satmouse-client/dist/elements/index.js";
 
-    const connection = new SatMouseConnection({ maxRetries: 1, reconnectDelay: 5000 });
+    // Use HTTPS TD endpoint to avoid mixed-content blocks on HTTPS pages
+    const connection = new SatMouseConnection({
+      tdUrl: "https://localhost:18947/td.json",
+      maxRetries: 1,
+      reconnectDelay: 5000,
+    });
     const manager = new InputManager();
     manager.addConnection(connection);
     registerSatMouse(manager);
