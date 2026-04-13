@@ -1,33 +1,33 @@
 {
   "name": "@kelnishi/satmouse-client",
-  "version": "0.12.6",
+  "version": "0.12.7",
   "description": "Client SDK for SatMouse 6DOF spatial input bridge",
   "type": "module",
   "sideEffects": ["./src/elements/*.ts", "./dist/elements/*"],
   "exports": {
     ".": {
       "types": "./dist/core/index.d.ts",
-      "import": "./dist/core/index.mjs",
+      "import": "./dist/core/index.js",
       "require": "./dist/core/index.cjs"
     },
     "./core": {
       "types": "./dist/core/index.d.ts",
-      "import": "./dist/core/index.mjs",
+      "import": "./dist/core/index.js",
       "require": "./dist/core/index.cjs"
     },
     "./utils": {
       "types": "./dist/utils/index.d.ts",
-      "import": "./dist/utils/index.mjs",
+      "import": "./dist/utils/index.js",
       "require": "./dist/utils/index.cjs"
     },
     "./react": {
       "types": "./dist/react/index.d.ts",
-      "import": "./dist/react/index.mjs",
+      "import": "./dist/react/index.js",
       "require": "./dist/react/index.cjs"
     },
     "./elements": {
       "types": "./dist/elements/index.d.ts",
-      "import": "./dist/elements/index.mjs",
+      "import": "./dist/elements/index.js",
       "require": "./dist/elements/index.cjs"
     },
     "./react/styles.css": "./dist/styles.css"

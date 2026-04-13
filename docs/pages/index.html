@@ -602,9 +602,9 @@
 
   <script type="module">
     // Live demo — connects to SatMouse bridge on localhost if running
-    import { SatMouseConnection } from "https://esm.sh/@kelnishi/satmouse-client";
-    import { InputManager } from "https://esm.sh/@kelnishi/satmouse-client/utils";
-    import { registerSatMouse } from "https://esm.sh/@kelnishi/satmouse-client/elements";
+    import { SatMouseConnection } from "https://unpkg.com/@kelnishi/satmouse-client/dist/core/index.js";
+    import { InputManager } from "https://unpkg.com/@kelnishi/satmouse-client/dist/utils/index.js";
+    import { registerSatMouse } from "https://unpkg.com/@kelnishi/satmouse-client/dist/elements/index.js";
 
     const connection = new SatMouseConnection({ maxRetries: 1, reconnectDelay: 5000 });
     const manager = new InputManager();
