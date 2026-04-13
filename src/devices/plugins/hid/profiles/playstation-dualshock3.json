@@ -1,5 +1,6 @@
 {
   "name": "DualShock 3",
+  "deviceClass": "gamepad",
   "vendorId": "0x054c",
   "productId": "0x0268",
   "note": "PS3 DualShock 3. Source: carldanley/node-gamepad. Buttons use bitmask comparison at byte offset.",

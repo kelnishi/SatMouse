@@ -1,5 +1,6 @@
 {
   "name": "N64 Retrolink",
+  "deviceClass": "gamepad",
   "vendorId": "0x0079",
   "productId": "0x0006",
   "note": "Retrolink N64 USB controller. Source: carldanley/node-gamepad.",

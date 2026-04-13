@@ -1,5 +1,6 @@
 {
   "name": "Logitech Dual Action",
+  "deviceClass": "gamepad",
   "vendorId": "0x046d",
   "productId": "0xc216",
   "note": "Source: carldanley/node-gamepad. No joystick axes in source definition.",

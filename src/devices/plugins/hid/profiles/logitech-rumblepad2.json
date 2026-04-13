@@ -1,5 +1,6 @@
 {
   "name": "Logitech RumblePad 2",
+  "deviceClass": "gamepad",
   "vendorId": "0x046d",
   "productId": "0xc218",
   "note": "Source: carldanley/node-gamepad.",
