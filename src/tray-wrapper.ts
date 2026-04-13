@@ -84,7 +84,7 @@ function main() {
   let serverProcess: ChildProcess | null = null;
 
   const openClientCb = koffi.register(() => {
-    openBrowser("https://localhost:18947/client/");
+    openBrowser("https://127.0.0.1:18947/client/");
   }, koffi.pointer(ActionProto));
 
   const rescanCb = koffi.register(() => {
@@ -100,10 +100,35 @@ function main() {
     process.exit(0);
   }, koffi.pointer(ActionProto));
 
-  const handleURLCb = koffi.register(() => {
-    // satmouse://launch just needs the app running — which it already is.
-    // If the app was not running, macOS launched it to handle the URL.
-    console.log("[Tray] URL scheme invoked");
+  const handleURLCb = koffi.register((_self: any, _cmd: any, event: any, _reply: any) => {
+    // Try to extract the URL from the Apple Event
+    let urlStr = "";
+    try {
+      const desc = msg_l(event, sel("paramDescriptorForKeyword:"), 0x2d2d2d2d); // keyDirectObject '----'
+      if (desc) {
+        const nsStr = msg(desc, sel("stringValue"));
+        if (nsStr) {
+          const cStr = msg(nsStr, sel("UTF8String"));
+          if (cStr) urlStr = koffi.decode(cStr, "char", -1);
+        }
+      }
+    } catch {}
+
+    console.log(`[Tray] URL scheme invoked: ${urlStr || "(unknown)"}`);
+
+    if (urlStr.startsWith("satmouse://negotiate")) {
+      // Forward negotiate request to the HTTP server, which redirects back to the origin
+      try {
+        const url = new URL(urlStr.replace("satmouse://", "http://localhost/"));
+        const origin = url.searchParams.get("origin") ?? "";
+        const callback = url.searchParams.get("callback") ?? "/satmouse-handshake";
+        const challenge = url.searchParams.get("challenge") ?? "";
+        const negotiateUrl = `http://127.0.0.1:18945/negotiate?origin=${encodeURIComponent(origin)}&callback=${encodeURIComponent(callback)}&challenge=${encodeURIComponent(challenge)}`;
+        openBrowser(negotiateUrl);
+      } catch (e) {
+        console.warn("[Tray] Failed to handle negotiate URL:", e);
+      }
+    }
   }, koffi.pointer(URLHandlerProto));
 
   class_addMethod(TargetClass, sel("openClient:"), openClientCb, "v@:@");
