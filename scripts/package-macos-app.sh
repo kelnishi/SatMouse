@@ -13,10 +13,18 @@ echo "=== Packaging SatMouse.app ==="
 
 # Step 1: Build the Swift app + extension via Xcode
 echo "Building Swift app + Safari extension..."
+# Use Developer ID if available, otherwise ad-hoc
+SIGN_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" | head -1 | awk -F'"' '{print $2}')
+if [ -z "$SIGN_ID" ]; then
+  SIGN_ID="-"
+fi
+echo "  Signing: $SIGN_ID"
+
 xcodebuild -project "$XCODE_PROJECT" \
   -scheme "SatMouse" -configuration Release \
   -derivedDataPath src/extension/xcode/build \
-  CODE_SIGN_IDENTITY="-" CODE_SIGNING_ALLOWED=YES \
+  CODE_SIGN_IDENTITY="$SIGN_ID" CODE_SIGNING_ALLOWED=YES \
+  DEVELOPMENT_TEAM="${APPLE_TEAM_ID:-QVJ72LNVSK}" \
   CODE_SIGN_ENTITLEMENTS="SatMouse/SatMouse.entitlements" \
   -quiet 2>&1 || { echo "Xcode build failed"; exit 1; }
 
@@ -134,19 +142,16 @@ fi
 
 # Re-sign the entire bundle after modifications.
 # Safari requires the .appex and parent .app to have matching signatures.
-# Adding resources invalidates the Xcode signature, so we re-sign everything.
 echo "Re-signing bundle..."
-# Determine signing identity from the Xcode-built binary
-SIGN_ID=$(codesign -dvv "$APP/Contents/MacOS/SatMouse" 2>&1 | grep "Authority=" | head -1 | sed 's/Authority=//')
-if [ -z "$SIGN_ID" ] || [ "$SIGN_ID" = "-" ]; then
-  SIGN_ID="-"  # Ad-hoc fallback
-fi
 echo "  Signing identity: $SIGN_ID"
 
 # Sign Node binary with entitlements
 codesign --force --sign "$SIGN_ID" --entitlements /tmp/satmouse-node.entitlements "$RESOURCES/bin/node" 2>/dev/null || true
 
-# Re-sign the .appex (nested)
+# Re-sign native addons
+find "$RESOURCES/node_modules" -name "*.node" -exec codesign --force --sign "$SIGN_ID" {} \; 2>/dev/null || true
+
+# Re-sign the .appex (nested — must be before parent)
 codesign --force --sign "$SIGN_ID" "$APP/Contents/PlugIns/SatMouse Extension.appex" 2>/dev/null || true
 
 # Re-sign the parent .app (must be last)
