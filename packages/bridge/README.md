@@ -26,6 +26,7 @@ SatMouse bridges spatial input devices to web apps over WebSocket and WebTranspo
 | 18944 | WebSocket | Legacy spacemouse-proxy compat |
 | 18945 | HTTP + WebSocket | Thing Description, reference client, spatial stream |
 | 18946 | WebTransport | Low-latency HTTP/3 QUIC datagrams |
+| 18947 | HTTPS | Thing Description + client (for HTTPS pages) |
 
 ## Platforms
 

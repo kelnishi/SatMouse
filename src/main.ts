@@ -104,9 +104,11 @@ async function main(): Promise<void> {
   const mdns = new MDNSAdvertiser(config);
   mdns.start();
 
+  const httpsPort = config.wsPort + 2;
   console.log("\n──────────────────────────────────────────");
   console.log(`Legacy (compat):   ws://127.0.0.1:18944`);
   console.log(`Thing Description: http://localhost:${config.wsPort}/td.json`);
+  console.log(`                   https://localhost:${httpsPort}/td.json`);
   console.log(`Reference client:  ${clientUrl}`);
   console.log(`WebSocket:         ws://localhost:${config.wsPort}/spatial`);
   console.log(`WebTransport:      https://localhost:${config.wtPort}`);

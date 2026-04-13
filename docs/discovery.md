@@ -49,9 +49,10 @@ SatMouse publishes a `_wot._tcp` service via mDNS (Bonjour/Avahi/mDNS):
 |------------|--------------------------------|
 | Name       | `SatMouse`                     |
 | Type       | `_wot._tcp`                    |
-| Port       | `4444` (HTTP/WS server)        |
+| Port       | `18945` (HTTP/WS server)       |
 | TXT `td`   | `/td.json`                     |
-| TXT `wt`   | `4443` (WebTransport port)     |
+| TXT `wt`   | `18946` (WebTransport port)    |
+| TXT `https`| `18947` (HTTPS port)           |
 | TXT `type` | `SpatialInput`                 |
 
 ## Step 2: Client Discovery
