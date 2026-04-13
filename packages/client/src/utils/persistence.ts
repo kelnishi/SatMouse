@@ -34,7 +34,15 @@ export function loadSettings(storage?: StorageAdapter): Partial<InputConfig> | n
   const raw = s.getItem(STORAGE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as Partial<InputConfig>;
+    const parsed = JSON.parse(raw) as any;
+    // Migrate old single "scale" to separate translate/rotate/w scales
+    if (parsed.scale != null && parsed.translateScale == null) {
+      parsed.translateScale = parsed.scale;
+      parsed.rotateScale = parsed.scale;
+      parsed.wScale = parsed.scale;
+      delete parsed.scale;
+    }
+    return parsed as Partial<InputConfig>;
   } catch {
     return null;
   }

@@ -571,7 +571,14 @@ function loadSettings(storage) {
   const raw = s.getItem(STORAGE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (parsed.scale != null && parsed.translateScale == null) {
+      parsed.translateScale = parsed.scale;
+      parsed.rotateScale = parsed.scale;
+      parsed.wScale = parsed.scale;
+      delete parsed.scale;
+    }
+    return parsed;
   } catch {
     return null;
   }

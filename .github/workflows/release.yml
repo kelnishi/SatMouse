@@ -138,9 +138,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: SatMouse-macOS-${{ matrix.arch }}.zip
+          generate_release_notes: true
 
       - name: Upload release asset (Linux/Windows)
         if: matrix.platform != 'darwin'
         uses: softprops/action-gh-release@v2
         with:
           files: satmouse-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+          generate_release_notes: true
