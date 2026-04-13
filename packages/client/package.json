@@ -1,6 +1,6 @@
 {
   "name": "@kelnishi/satmouse-client",
-  "version": "0.12.7",
+  "version": "0.12.8",
   "description": "Client SDK for SatMouse 6DOF spatial input bridge",
   "type": "module",
   "sideEffects": ["./src/elements/*.ts", "./dist/elements/*"],
