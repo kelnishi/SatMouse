@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icons/SatMouse.svg" width="96" alt="SatMouse">
+</p>
+
 # SatMouse
 
 [![CI](https://github.com/kelnishi/SatMouse/actions/workflows/ci.yml/badge.svg)](https://github.com/kelnishi/SatMouse/actions/workflows/ci.yml)
