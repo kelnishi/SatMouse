@@ -2,6 +2,7 @@ import { TypedEmitter } from "./emitter.js";
 import { fetchThingDescription, resolveEndpoints } from "./discovery.js";
 import { WebTransportAdapter } from "./transports/webtransport.js";
 import { WebSocketAdapter } from "./transports/websocket.js";
+import { WebRTCAdapter } from "./transports/webrtc.js";
 import type { Transport } from "./transports/transport.js";
 import type {
   ConnectOptions,
@@ -39,7 +40,7 @@ export function parseSatMouseUri(uri: string): { tdUrl: string; wsUrl: string; w
 const DEFAULT_OPTIONS: Required<
   Pick<ConnectOptions, "transports" | "reconnectDelay" | "maxRetries" | "wsSubprotocol">
 > = {
-  transports: ["webtransport", "websocket"],
+  transports: ["webtransport", "webrtc", "websocket"],
   reconnectDelay: 2000,
   maxRetries: 3,
   wsSubprotocol: "satmouse-json",
@@ -134,6 +135,17 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
         try {
           if (typeof globalThis.WebTransport === "undefined") continue;
           const adapter = new WebTransportAdapter(wtUrl, certHash);
+          if (await this.tryTransport(adapter)) return;
+        } catch {
+          continue;
+        }
+      }
+      if (proto === "webrtc") {
+        try {
+          if (typeof globalThis.RTCPeerConnection === "undefined") continue;
+          // Use the rtcUrl option, or derive from wsUrl host
+          const rtcUrl = this.options.rtcUrl ?? `http://127.0.0.1:18945/rtc/offer`;
+          const adapter = new WebRTCAdapter(rtcUrl);
           if (await this.tryTransport(adapter)) return;
         } catch {
           continue;

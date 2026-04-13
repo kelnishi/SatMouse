@@ -1,5 +1,6 @@
 import { WebTransportServer } from "./webtransport.js";
 import { SatMouseWebSocketServer } from "./websocket.js";
+import { WebRTCServer } from "./webrtc.js";
 import { LegacyServer } from "./legacy.js";
 import type { DeviceManager } from "../devices/manager.js";
 import type { SatMouseConfig } from "../config.js";
@@ -15,10 +16,12 @@ import { join } from "node:path";
 export class TransportManager {
   private wt: WebTransportServer;
   private ws: SatMouseWebSocketServer;
+  private rtc: WebRTCServer;
   private legacy: LegacyServer;
 
   constructor(config: SatMouseConfig) {
     this.legacy = new LegacyServer();
+    this.rtc = new WebRTCServer();
     this.wt = new WebTransportServer(
       config.wtPort,
       join(config.certsDir, "cert.pem"),
@@ -32,21 +35,25 @@ export class TransportManager {
     deviceManager.on("spatialData", (data) => {
       this.wt.broadcastSpatialData(data);
       this.ws.broadcastSpatialData(data);
+      this.rtc.broadcastSpatialData(data);
       this.legacy.handleSpatialData(data);
     });
 
     deviceManager.on("buttonEvent", (data) => {
       this.wt.broadcastButtonEvent(data);
       this.ws.broadcastButtonEvent(data);
+      this.rtc.broadcastButtonEvent(data);
       this.legacy.handleButtonEvent(data);
     });
 
     deviceManager.on("deviceConnected", (info) => {
       this.ws.broadcastDeviceStatus("connected", info);
+      this.rtc.broadcastDeviceStatus("connected", info);
     });
 
     deviceManager.on("deviceDisconnected", (info) => {
       this.ws.broadcastDeviceStatus("disconnected", info);
+      this.rtc.broadcastDeviceStatus("disconnected", info);
     });
 
     // Start WebSocket (attaches to httpServer)
@@ -64,9 +71,15 @@ export class TransportManager {
     }
   }
 
+  /** Get the WebRTC server for signaling endpoint */
+  get webrtc(): WebRTCServer {
+    return this.rtc;
+  }
+
   stop(): void {
     this.wt.stop();
     this.ws.stop();
+    this.rtc.stop();
     this.legacy.stop();
   }
 }

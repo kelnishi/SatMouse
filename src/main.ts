@@ -101,6 +101,9 @@ async function main(): Promise<void> {
   const transportManager = new TransportManager(config);
   await transportManager.start(deviceManager, httpServer);
 
+  // Wire WebRTC signaling to HTTP server
+  tdServer.webrtcServer = transportManager.webrtc;
+
   // mDNS
   const mdns = new MDNSAdvertiser(config);
   mdns.start();

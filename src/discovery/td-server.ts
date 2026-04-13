@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { networkInterfaces } from "node:os";
 import type { SatMouseConfig } from "../config.js";
 import type { DeviceManager } from "../devices/manager.js";
+import type { WebRTCServer } from "../transport/webrtc.js";
 import { resolveResource, isPathWithin } from "../resources.js";
 
 /**
@@ -24,6 +25,12 @@ export class TDServer {
   private config: SatMouseConfig;
   private deviceManager: DeviceManager;
   private certHashBase64: string | null = null;
+  private _webrtc: WebRTCServer | null = null;
+
+  /** Set the WebRTC server for signaling (called after transport manager starts) */
+  set webrtcServer(rtc: WebRTCServer) {
+    this._webrtc = rtc;
+  }
 
   constructor(config: SatMouseConfig, deviceManager: DeviceManager) {
     this.config = config;
@@ -127,6 +134,10 @@ export class TDServer {
       this.serveTD(req, res);
     } else if (url.startsWith("/negotiate")) {
       this.serveNegotiate(req, res);
+    } else if (url === "/rtc/offer" && req.method === "POST") {
+      this.serveRTCOffer(req, res);
+    } else if (url.startsWith("/rtc/connect")) {
+      this.serveRTCConnect(req, res);
     } else if (url === "/api/device") {
       this.serveDeviceInfo(res);
     } else if (url.startsWith("/client")) {
@@ -223,6 +234,72 @@ export class TDServer {
     const redirectUrl = `${origin}${callback}?${params}`;
     res.writeHead(302, { Location: redirectUrl });
     res.end();
+  }
+
+  /**
+   * POST /rtc/offer — Direct SDP signaling for browsers that can POST to localhost.
+   * Body: SDP offer string. Response: SDP answer string.
+   */
+  private serveRTCOffer(req: IncomingMessage, res: ServerResponse): void {
+    if (!this._webrtc) {
+      res.writeHead(503, { "Content-Type": "text/plain" });
+      res.end("WebRTC not available");
+      return;
+    }
+
+    let body = "";
+    req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+    req.on("end", async () => {
+      try {
+        const answer = await this._webrtc!.handleOffer(body);
+        res.writeHead(200, { "Content-Type": "application/sdp" });
+        res.end(answer);
+      } catch (err) {
+        console.error("[WebRTC] Failed to handle offer:", err);
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Failed to process offer");
+      }
+    });
+  }
+
+  /**
+   * GET /rtc/connect — Navigate-redirect signaling for Safari.
+   * Client navigates here with SDP offer as base64 query param.
+   * Bridge processes offer, redirects back with SDP answer.
+   *
+   * GET /rtc/connect?offer=<base64>&origin=<origin>&callback=<path>
+   * → 302 <origin><callback>?answer=<base64>
+   */
+  private serveRTCConnect(req: IncomingMessage, res: ServerResponse): void {
+    if (!this._webrtc) {
+      res.writeHead(503, { "Content-Type": "text/plain" });
+      res.end("WebRTC not available");
+      return;
+    }
+
+    const parsed = new URL(req.url ?? "/", "http://localhost");
+    const offerB64 = parsed.searchParams.get("offer");
+    const origin = parsed.searchParams.get("origin");
+    const callback = parsed.searchParams.get("callback") ?? "/";
+
+    if (!offerB64 || !origin) {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Missing offer or origin parameter");
+      return;
+    }
+
+    const offerSdp = Buffer.from(offerB64, "base64").toString("utf-8");
+
+    this._webrtc.handleOffer(offerSdp).then((answer) => {
+      const answerB64 = Buffer.from(answer).toString("base64");
+      const redirectUrl = `${origin}${callback}?answer=${encodeURIComponent(answerB64)}`;
+      res.writeHead(302, { Location: redirectUrl });
+      res.end();
+    }).catch((err) => {
+      console.error("[WebRTC] Failed to handle offer:", err);
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("Failed to process offer");
+    });
   }
 
   private serveDeviceInfo(res: ServerResponse): void {

@@ -1,6 +1,6 @@
 {
   "name": "satmouse",
-  "version": "0.14.5",
+  "version": "0.15.0",
   "description": "6DOF spatial input bridge — streams device data to web apps over WebTransport and WebSocket",
   "homepage": "https://kelnishi.github.io/SatMouse/",
   "repository": {
@@ -23,6 +23,7 @@
     "@fails-components/webtransport-transport-http3-quiche": "^1.6.1",
     "bonjour-service": "^1.3.0",
     "koffi": "^2.9.0",
+    "werift": "^0.22.9",
     "ws": "^8.18.0"
   },
   "devDependencies": {
