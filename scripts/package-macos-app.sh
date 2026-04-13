@@ -32,6 +32,11 @@ cp dist/tray-wrapper.cjs "$APP/Contents/Resources/tray-wrapper.cjs"
 # Copy HID device profiles
 cp src/devices/plugins/hid/profiles.json "$APP/Contents/Resources/profiles.json"
 
+# Copy app icon
+if [ -d "assets/icons/SatMouse.icon" ]; then
+  cp -R assets/icons/SatMouse.icon "$APP/Contents/Resources/SatMouse.icon"
+fi
+
 # Compile a native launcher (CFBundleExecutable).
 # Fork-based: parent stays alive as the macOS-tracked process (for window
 # server identity and menu bar icon), child execs node with tray-wrapper.
@@ -120,6 +125,10 @@ cat > "$APP/Contents/Info.plist" << PLIST
 <dict>
     <key>CFBundleExecutable</key>
     <string>satmouse</string>
+    <key>CFBundleIconFile</key>
+    <string>SatMouse</string>
+    <key>CFBundleIconName</key>
+    <string>SatMouse</string>
     <key>CFBundleIdentifier</key>
     <string>${BUNDLE_ID}</string>
     <key>CFBundleName</key>

@@ -117,16 +117,20 @@ jobs:
         run: |
           cp "$(command -v node)" dist/node
           cp dist/main.js dist/main.cjs
+          cp assets/icons/SatMouse.svg dist/SatMouse.svg
+          cp src/devices/plugins/hid/profiles.json dist/profiles.json
           cd dist
-          tar czf ../satmouse-linux-${{ matrix.arch }}.tar.gz node main.cjs
+          tar czf ../satmouse-linux-${{ matrix.arch }}.tar.gz node main.cjs SatMouse.svg profiles.json
 
       - name: Package Windows
         if: matrix.platform == 'win32'
         run: |
           Copy-Item (Get-Command node).Source "dist/node.exe"
           Copy-Item "dist/main.js" "dist/main.cjs"
+          Copy-Item "assets/icons/SatMouse-Default-1024x1024@1x.png" "dist/SatMouse.png"
+          Copy-Item "src/devices/plugins/hid/profiles.json" "dist/profiles.json"
           cd dist
-          tar czf ../satmouse-win32-${{ matrix.arch }}.tar.gz node.exe main.cjs
+          tar czf ../satmouse-win32-${{ matrix.arch }}.tar.gz node.exe main.cjs SatMouse.png profiles.json
         shell: pwsh
 
       - name: Upload release asset (macOS)
