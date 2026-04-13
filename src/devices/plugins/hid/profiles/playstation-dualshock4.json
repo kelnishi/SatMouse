@@ -7,6 +7,12 @@
   "axisOffset": 1,
   "buttonOffset": 5,
   "buttonMask": "0xFFF0",
+  "hat": {
+    "byte": 5,
+    "mask": 15,
+    "buttons": [12, 13, 14, 15],
+    "labels": ["D-pad Up", "D-pad Right", "D-pad Down", "D-pad Left"]
+  },
   "axes": [
     { "sourceAxis": 0, "target": "tx", "label": "Left Stick X", "deadZone": 0.15 },
     { "sourceAxis": 1, "target": "tz", "label": "Left Stick Y", "invert": true, "deadZone": 0.15 },

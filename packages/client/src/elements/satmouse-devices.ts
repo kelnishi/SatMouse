@@ -175,21 +175,27 @@ export class SatMouseDevices extends HTMLElement {
     }
     controls.appendChild(routeGroup);
 
-    // Scale slider
-    const sensRow = document.createElement("div");
-    sensRow.className = "slider-row";
-    const currentScale = cfg.scale ?? mgr.config.scale;
-    sensRow.innerHTML = `<label>Scale</label>` +
-      `<input type="range" min="0" max="100" value="${Math.round(unmapSlider(currentScale))}">` +
-      `<span>${currentScale.toFixed(4)}</span>`;
-    const slider = sensRow.querySelector("input")! as HTMLInputElement;
-    const span = sensRow.querySelector("span")!;
-    slider.addEventListener("input", () => {
-      const v = mapSlider(+slider.value);
-      span.textContent = v.toFixed(4);
-      mgr.updateDeviceConfig(device.id, { scale: v });
-    });
-    controls.appendChild(sensRow);
+    // Scale sliders
+    for (const [label, key, globalKey] of [
+      ["Trans", "translateScale", "translateScale"],
+      ["Rot", "rotateScale", "rotateScale"],
+      ["W", "wScale", "wScale"],
+    ] as const) {
+      const row = document.createElement("div");
+      row.className = "slider-row";
+      const val = (cfg as any)[key] ?? (mgr.config as any)[globalKey];
+      row.innerHTML = `<label>${label}</label>` +
+        `<input type="range" min="0" max="100" value="${Math.round(unmapSlider(val))}">` +
+        `<span>${val.toFixed(4)}</span>`;
+      const sl = row.querySelector("input")! as HTMLInputElement;
+      const sp = row.querySelector("span")!;
+      sl.addEventListener("input", () => {
+        const v = mapSlider(+sl.value);
+        sp.textContent = v.toFixed(4);
+        mgr.updateDeviceConfig(device.id, { [key]: v });
+      });
+      controls.appendChild(row);
+    }
 
     // Button mappings
     const btnSection = document.createElement("div");

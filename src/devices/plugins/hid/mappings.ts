@@ -56,6 +56,17 @@ export interface HIDDeviceMapping {
   buttonOffset?: number;
   /** Bitmask to apply to button bytes before comparing (filters d-pad, etc.) */
   buttonMask?: number;
+  /** Hat switch (d-pad) configuration. Value 0-7 = direction, 8+ = neutral. */
+  hat?: {
+    /** Byte offset in the report for the hat value */
+    byte: number;
+    /** Bitmask to extract the hat value (default: 0x0F for low nibble) */
+    mask?: number;
+    /** Target button indices for [up, right, down, left] */
+    buttons: [number, number, number, number];
+    /** Labels for [up, right, down, left] */
+    labels?: [string, string, string, string];
+  };
   /** Axis mappings */
   axes: AxisMapping[];
   /** Button mappings */

@@ -64,8 +64,11 @@ export class HIDPlugin extends DevicePlugin {
           connectionType: "usb",
           axes: mapping.axes.map((a) => a.target),
           axisLabels: mapping.axes.map((a) => a.label ?? a.target.toUpperCase()),
-          buttonCount: mapping.buttons.length,
-          buttonLabels: mapping.buttons.map((b) => b.label ?? `Button ${b.targetButton}`),
+          buttonCount: mapping.buttons.length + (mapping.hat ? 4 : 0),
+          buttonLabels: [
+            ...mapping.buttons.map((b) => b.label ?? `Button ${b.targetButton}`),
+            ...(mapping.hat?.labels ?? []),
+          ],
         };
         this.devices.push(info);
         this.emit("deviceConnected", info);
@@ -228,6 +231,27 @@ export class HIDPlugin extends DevicePlugin {
           }
         }
         setButtons(buttons);
+      }
+    }
+
+    // Hat switch (d-pad) — decoded as 4 virtual buttons
+    if (mapping.hat && report.length > mapping.hat.byte) {
+      const hatVal = report[mapping.hat.byte] & (mapping.hat.mask ?? 0x0F);
+      // Hat values: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW, 8+=neutral
+      const [upBtn, rightBtn, downBtn, leftBtn] = mapping.hat.buttons;
+      const up    = hatVal === 0 || hatVal === 1 || hatVal === 7;
+      const right = hatVal === 1 || hatVal === 2 || hatVal === 3;
+      const down  = hatVal === 3 || hatVal === 4 || hatVal === 5;
+      const left  = hatVal === 5 || hatVal === 6 || hatVal === 7;
+
+      const hatState = (up ? 1 : 0) | (right ? 2 : 0) | (down ? 4 : 0) | (left ? 8 : 0);
+      const prevHat = (this as any)._prevHat ?? 0;
+      if (hatState !== prevHat) {
+        if ((hatState & 1) !== (prevHat & 1)) this.emit("buttonEvent", { button: upBtn, pressed: up, timestamp });
+        if ((hatState & 2) !== (prevHat & 2)) this.emit("buttonEvent", { button: rightBtn, pressed: right, timestamp });
+        if ((hatState & 4) !== (prevHat & 4)) this.emit("buttonEvent", { button: downBtn, pressed: down, timestamp });
+        if ((hatState & 8) !== (prevHat & 8)) this.emit("buttonEvent", { button: leftBtn, pressed: left, timestamp });
+        (this as any)._prevHat = hatState;
       }
     }
   }

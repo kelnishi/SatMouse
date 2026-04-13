@@ -407,7 +407,7 @@ var SatMouseConnection = class extends TypedEmitter {
 };
 
 // packages/client/src/utils/action-map.ts
-var FULL_AXES = ["tx", "ty", "tz", "rx", "ry", "rz"];
+var FULL_AXES = ["tx", "ty", "tz", "rx", "ry", "rz", "w"];
 var DEFAULT_ROUTES = [
   { source: "tx", target: "tx" },
   { source: "ty", target: "ty" },
@@ -438,36 +438,45 @@ function readAxis(data, axis) {
       return data.rotation.y;
     case "rz":
       return data.rotation.z;
+    case "w":
+      return data.w ?? 0;
     default:
       return 0;
   }
 }
-function writeAxis(t, r, axis, value) {
+function writeAxis(acc, axis, value) {
   const isNeg = axis.endsWith("-");
   const base = axis.replace(/[+-]$/, "");
   const sign = isNeg ? -1 : 1;
+  if (base === "w") {
+    acc.w += value * sign;
+    return;
+  }
   const group = base[0];
   const key = base[1];
-  if (group === "t") t[key] += value * sign;
-  else r[key] += value * sign;
+  if (group === "t") acc.t[key] += value * sign;
+  else acc.r[key] += value * sign;
 }
-function applyRoutes(data, routes, scale = 1) {
-  const t = { x: 0, y: 0, z: 0 };
-  const r = { x: 0, y: 0, z: 0 };
+function applyRoutes(data, routes, translateScale = 1, rotateScale = 1, wScale = 1) {
+  const acc = { t: { x: 0, y: 0, z: 0 }, r: { x: 0, y: 0, z: 0 }, w: 0 };
   for (const route of routes) {
     let value = readAxis(data, route.source);
     if (route.flip) value = -value;
+    const targetBase = route.target.replace(/[+-]$/, "");
+    const scale = targetBase === "w" ? wScale : targetBase[0] === "t" ? translateScale : rotateScale;
     value *= scale;
-    writeAxis(t, r, route.target, value);
+    writeAxis(acc, route.target, value);
   }
-  return { translation: t, rotation: r, timestamp: data.timestamp, deviceId: data.deviceId };
+  return { translation: acc.t, rotation: acc.r, w: acc.w || void 0, timestamp: data.timestamp, deviceId: data.deviceId };
 }
 
 // packages/client/src/utils/config.ts
 var DEFAULT_CONFIG = {
   routes: DEFAULT_ROUTES,
   buttonRoutes: [],
-  scale: 1e-3,
+  translateScale: 1e-3,
+  rotateScale: 1e-3,
+  wScale: 1e-3,
   deadZone: 0,
   dominant: false,
   lockPosition: false,
@@ -528,7 +537,9 @@ function resolveDeviceConfig(config, deviceId) {
     ...config,
     routes: deviceOverride.routes ?? config.routes,
     buttonRoutes: deviceOverride.buttonRoutes ?? config.buttonRoutes,
-    scale: deviceOverride.scale ?? config.scale,
+    translateScale: deviceOverride.translateScale ?? config.translateScale,
+    rotateScale: deviceOverride.rotateScale ?? config.rotateScale,
+    wScale: deviceOverride.wScale ?? config.wScale,
     deadZone: deviceOverride.deadZone ?? config.deadZone,
     dominant: deviceOverride.dominant ?? config.dominant
   };
@@ -632,7 +643,10 @@ var InputManager = class extends TypedEmitter {
     const resolved = resolveDeviceConfig(this._config, deviceId);
     return {
       routes: resolved.routes,
-      scale: resolved.scale,
+      buttonRoutes: resolved.buttonRoutes,
+      translateScale: resolved.translateScale,
+      rotateScale: resolved.rotateScale,
+      wScale: resolved.wScale,
       deadZone: resolved.deadZone,
       dominant: resolved.dominant
     };
@@ -680,7 +694,8 @@ var InputManager = class extends TypedEmitter {
         tz: processed.translation.z,
         rx: processed.rotation.x,
         ry: processed.rotation.y,
-        rz: processed.rotation.z
+        rz: processed.rotation.z,
+        w: processed.w ?? 0
       });
       this.accDirty = true;
     });
@@ -701,7 +716,7 @@ var InputManager = class extends TypedEmitter {
   }
   flushAccumulator() {
     if (!this.accDirty) return;
-    const merged = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0 };
+    const merged = { tx: 0, ty: 0, tz: 0, rx: 0, ry: 0, rz: 0, w: 0 };
     for (const acc of this.deviceAccumulators.values()) {
       merged.tx += acc.tx;
       merged.ty += acc.ty;
@@ -709,12 +724,14 @@ var InputManager = class extends TypedEmitter {
       merged.rx += acc.rx;
       merged.ry += acc.ry;
       merged.rz += acc.rz;
+      merged.w += acc.w;
     }
     this.deviceAccumulators.clear();
     this.accDirty = false;
     let data = {
       translation: { x: merged.tx, y: merged.ty, z: merged.tz },
       rotation: { x: merged.rx, y: merged.ry, z: merged.rz },
+      w: merged.w || void 0,
       timestamp: performance.now() * 1e3
     };
     if (this._config.lockPosition) {
@@ -755,7 +772,7 @@ var InputManager = class extends TypedEmitter {
     }
     const device = this.knownDevices.get(deviceId);
     const deviceRoutes = this.resolveRoutes(deviceId, device);
-    data = applyRoutes(data, deviceRoutes, cfg.scale);
+    data = applyRoutes(data, deviceRoutes, cfg.translateScale, cfg.rotateScale, cfg.wScale);
     return data;
   }
   /** Get the effective routes for a device: device config override > device axes metadata > global default */
@@ -1073,18 +1090,24 @@ var SatMouseDevices = class extends HTMLElement {
       routeGroup.appendChild(row);
     }
     controls.appendChild(routeGroup);
-    const sensRow = document.createElement("div");
-    sensRow.className = "slider-row";
-    const currentScale = cfg.scale ?? mgr.config.scale;
-    sensRow.innerHTML = `<label>Scale</label><input type="range" min="0" max="100" value="${Math.round(unmapSlider(currentScale))}"><span>${currentScale.toFixed(4)}</span>`;
-    const slider = sensRow.querySelector("input");
-    const span = sensRow.querySelector("span");
-    slider.addEventListener("input", () => {
-      const v = mapSlider(+slider.value);
-      span.textContent = v.toFixed(4);
-      mgr.updateDeviceConfig(device.id, { scale: v });
-    });
-    controls.appendChild(sensRow);
+    for (const [label, key, globalKey] of [
+      ["Trans", "translateScale", "translateScale"],
+      ["Rot", "rotateScale", "rotateScale"],
+      ["W", "wScale", "wScale"]
+    ]) {
+      const row = document.createElement("div");
+      row.className = "slider-row";
+      const val = cfg[key] ?? mgr.config[globalKey];
+      row.innerHTML = `<label>${label}</label><input type="range" min="0" max="100" value="${Math.round(unmapSlider(val))}"><span>${val.toFixed(4)}</span>`;
+      const sl = row.querySelector("input");
+      const sp = row.querySelector("span");
+      sl.addEventListener("input", () => {
+        const v = mapSlider(+sl.value);
+        sp.textContent = v.toFixed(4);
+        mgr.updateDeviceConfig(device.id, { [key]: v });
+      });
+      controls.appendChild(row);
+    }
     const btnSection = document.createElement("div");
     btnSection.className = "btn-section";
     const btnLabel = document.createElement("div");

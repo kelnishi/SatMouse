@@ -16,8 +16,12 @@ export interface DeviceConfig {
   routes?: AxisRoute[];
   /** Button-to-key mappings */
   buttonRoutes?: ButtonRoute[];
-  /** Scale multiplier applied to all axes (default: 1) */
-  scale?: number;
+  /** Scale multiplier for translation axes (tx, ty, tz) */
+  translateScale?: number;
+  /** Scale multiplier for rotation axes (rx, ry, rz) */
+  rotateScale?: number;
+  /** Scale multiplier for W axis */
+  wScale?: number;
   /** Dead zone threshold (0-1). Values below this are zeroed. */
   deadZone?: number;
   /** Only pass the strongest axis, zero all others */
@@ -30,8 +34,12 @@ export interface InputConfig {
   routes: AxisRoute[];
   /** Default button-to-key mappings */
   buttonRoutes: ButtonRoute[];
-  /** Default scale */
-  scale: number;
+  /** Scale multiplier for translation axes */
+  translateScale: number;
+  /** Scale multiplier for rotation axes */
+  rotateScale: number;
+  /** Scale multiplier for W axis */
+  wScale: number;
   /** Dead zone threshold */
   deadZone: number;
   /** Dominant axis mode */
@@ -47,7 +55,9 @@ export interface InputConfig {
 export const DEFAULT_CONFIG: InputConfig = {
   routes: DEFAULT_ROUTES,
   buttonRoutes: [],
-  scale: 0.001,
+  translateScale: 0.001,
+  rotateScale: 0.001,
+  wScale: 0.001,
   deadZone: 0,
   dominant: false,
   lockPosition: false,
@@ -116,7 +126,9 @@ export function resolveDeviceConfig(config: InputConfig, deviceId: string): Inpu
     ...config,
     routes: deviceOverride.routes ?? config.routes,
     buttonRoutes: deviceOverride.buttonRoutes ?? config.buttonRoutes,
-    scale: deviceOverride.scale ?? config.scale,
+    translateScale: deviceOverride.translateScale ?? config.translateScale,
+    rotateScale: deviceOverride.rotateScale ?? config.rotateScale,
+    wScale: deviceOverride.wScale ?? config.wScale,
     deadZone: deviceOverride.deadZone ?? config.deadZone,
     dominant: deviceOverride.dominant ?? config.dominant,
   };
