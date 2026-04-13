@@ -136,6 +136,8 @@ export class TDServer {
       this.serveNegotiate(req, res);
     } else if (url === "/rtc/offer" && req.method === "POST") {
       this.serveRTCOffer(req, res);
+    } else if (url.startsWith("/rtc/connect-popup")) {
+      this.serveRTCConnectPopup(req, res);
     } else if (url.startsWith("/rtc/connect")) {
       this.serveRTCConnect(req, res);
     } else if (url === "/api/device") {
@@ -299,6 +301,47 @@ export class TDServer {
       console.error("[WebRTC] Failed to handle offer:", err);
       res.writeHead(500, { "Content-Type": "text/plain" });
       res.end("Failed to process offer");
+    });
+  }
+
+  /**
+   * GET /rtc/connect-popup — Returns HTML that processes the SDP offer
+   * and postMessages the answer back to window.opener, then closes.
+   */
+  private serveRTCConnectPopup(req: IncomingMessage, res: ServerResponse): void {
+    if (!this._webrtc) {
+      res.writeHead(503, { "Content-Type": "text/plain" });
+      res.end("WebRTC not available");
+      return;
+    }
+
+    const parsed = new URL(req.url ?? "/", "http://localhost");
+    const offerB64 = parsed.searchParams.get("offer");
+    if (!offerB64) {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Missing offer parameter");
+      return;
+    }
+
+    const offerSdp = Buffer.from(offerB64, "base64").toString("utf-8");
+
+    this._webrtc.handleOffer(offerSdp).then((answer) => {
+      // Return HTML page that postMessages the answer back to opener and closes
+      const html = `<!DOCTYPE html><html><body><script>
+        if (window.opener) {
+          window.opener.postMessage({
+            type: "satmouse-rtc-answer",
+            answer: ${JSON.stringify(answer)}
+          }, "*");
+        }
+        window.close();
+      </script></body></html>`;
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(html);
+    }).catch((err) => {
+      console.error("[WebRTC] Failed to handle popup offer:", err);
+      res.writeHead(500, { "Content-Type": "text/html" });
+      res.end(`<html><body><script>window.close();</script></body></html>`);
     });
   }
 

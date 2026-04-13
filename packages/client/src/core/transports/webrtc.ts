@@ -10,6 +10,10 @@ import { decodeBinaryFrame } from "../decode.js";
  * a reliable "reliable" channel.
  *
  * No trusted certs needed — WebRTC uses DTLS with self-signed certs.
+ *
+ * Signaling modes:
+ * - fetch POST to /rtc/offer (works from HTTP pages or same-origin)
+ * - popup window to /rtc/connect (works from HTTPS pages where fetch is blocked)
  */
 export class WebRTCAdapter implements Transport {
   readonly protocol = "webrtc" as const;
@@ -23,9 +27,6 @@ export class WebRTCAdapter implements Transport {
   private pc: RTCPeerConnection | null = null;
   private signalingUrl: string;
 
-  /**
-   * @param signalingUrl — HTTP endpoint for SDP exchange (e.g., "http://127.0.0.1:18945/rtc/offer")
-   */
   constructor(signalingUrl: string) {
     this.signalingUrl = signalingUrl;
   }
@@ -35,19 +36,15 @@ export class WebRTCAdapter implements Transport {
       throw new Error("RTCPeerConnection not available");
     }
 
-    this.pc = new RTCPeerConnection({
-      iceServers: [], // Local network, no STUN/TURN
-    });
+    this.pc = new RTCPeerConnection({ iceServers: [] });
 
-    // Listen for data channels created by the bridge
     this.pc.ondatachannel = (event) => {
       const channel = event.channel;
       if (channel.label === "spatial") {
         channel.binaryType = "arraybuffer";
         channel.onmessage = (e) => {
           if (e.data instanceof ArrayBuffer && e.data.byteLength >= 20) {
-            const decoded = decodeBinaryFrame(e.data);
-            this.onSpatialData?.(decoded);
+            this.onSpatialData?.(decodeBinaryFrame(e.data));
           }
         };
       } else if (channel.label === "reliable") {
@@ -69,48 +66,28 @@ export class WebRTCAdapter implements Transport {
       }
     };
 
-    // Create offer
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
-
-    // Wait for ICE gathering to complete (or timeout)
     await this.waitForICE();
 
-    // Send offer to bridge, get answer
-    const response = await fetch(this.signalingUrl, {
-      method: "POST",
-      body: this.pc.localDescription!.sdp,
-      headers: { "Content-Type": "application/sdp" },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Signaling failed: ${response.status}`);
-    }
-
-    const answerSdp = await response.text();
+    // Try fetch first, fall back to popup signaling
+    const answerSdp = await this.exchangeSDP(this.pc.localDescription!.sdp);
     await this.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
 
-    // Wait for connection to establish
+    // Wait for connection
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("WebRTC connection timeout")), 10000);
       const check = () => {
-        if (this.pc?.connectionState === "connected") {
-          clearTimeout(timeout);
-          resolve();
-        } else if (this.pc?.connectionState === "failed") {
-          clearTimeout(timeout);
-          reject(new Error("WebRTC connection failed"));
-        }
+        const state = this.pc?.connectionState;
+        if (state === "connected") { clearTimeout(timeout); resolve(); }
+        else if (state === "failed") { clearTimeout(timeout); reject(new Error("WebRTC connection failed")); }
       };
       this.pc!.onconnectionstatechange = () => {
         check();
-        // Re-attach close handler
         const state = this.pc?.connectionState;
-        if (state === "disconnected" || state === "failed" || state === "closed") {
-          this.onClose?.();
-        }
+        if (state === "disconnected" || state === "failed" || state === "closed") this.onClose?.();
       };
-      check(); // May already be connected
+      check();
     });
   }
 
@@ -119,11 +96,60 @@ export class WebRTCAdapter implements Transport {
     this.pc = null;
   }
 
+  /** Exchange SDP: try fetch POST, fall back to popup window */
+  private async exchangeSDP(offerSdp: string): Promise<string> {
+    // Try direct fetch first
+    try {
+      const res = await fetch(this.signalingUrl, {
+        method: "POST",
+        body: offerSdp,
+        headers: { "Content-Type": "application/sdp" },
+      });
+      if (res.ok) return await res.text();
+    } catch {
+      // Fetch blocked (mixed content) — fall through to popup
+    }
+
+    // Popup signaling: open a small window to the bridge's /rtc/connect endpoint
+    // The bridge processes the offer and posts the answer back via window.opener.postMessage
+    return this.exchangeSDPViaPopup(offerSdp);
+  }
+
+  private exchangeSDPViaPopup(offerSdp: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const offerB64 = btoa(offerSdp);
+      // Build URL — use /rtc/connect which returns HTML that postMessages the answer back
+      const baseUrl = this.signalingUrl.replace("/rtc/offer", "/rtc/connect-popup");
+      const url = `${baseUrl}?offer=${encodeURIComponent(offerB64)}`;
+
+      const popup = globalThis.open(url, "satmouse-rtc", "width=1,height=1,left=-100,top=-100");
+      if (!popup) {
+        reject(new Error("Popup blocked — user interaction required"));
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        popup.close();
+        reject(new Error("WebRTC signaling timeout"));
+      }, 10000);
+
+      const onMessage = (event: MessageEvent) => {
+        if (event.data?.type === "satmouse-rtc-answer") {
+          clearTimeout(timeout);
+          globalThis.removeEventListener("message", onMessage);
+          popup.close();
+          resolve(event.data.answer);
+        }
+      };
+      globalThis.addEventListener("message", onMessage);
+    });
+  }
+
   private waitForICE(): Promise<void> {
     return new Promise((resolve) => {
       if (!this.pc) return resolve();
       if (this.pc.iceGatheringState === "complete") return resolve();
-      const timeout = setTimeout(resolve, 2000); // Don't wait too long for local ICE
+      const timeout = setTimeout(resolve, 2000);
       this.pc.onicegatheringstatechange = () => {
         if (this.pc?.iceGatheringState === "complete") {
           clearTimeout(timeout);

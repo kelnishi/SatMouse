@@ -257,9 +257,6 @@ var WebRTCAdapter = class {
   onError = null;
   pc = null;
   signalingUrl;
-  /**
-   * @param signalingUrl — HTTP endpoint for SDP exchange (e.g., "http://127.0.0.1:18945/rtc/offer")
-   */
   constructor(signalingUrl) {
     this.signalingUrl = signalingUrl;
   }
@@ -267,18 +264,14 @@ var WebRTCAdapter = class {
     if (typeof globalThis.RTCPeerConnection === "undefined") {
       throw new Error("RTCPeerConnection not available");
     }
-    this.pc = new RTCPeerConnection({
-      iceServers: []
-      // Local network, no STUN/TURN
-    });
+    this.pc = new RTCPeerConnection({ iceServers: [] });
     this.pc.ondatachannel = (event) => {
       const channel = event.channel;
       if (channel.label === "spatial") {
         channel.binaryType = "arraybuffer";
         channel.onmessage = (e) => {
           if (e.data instanceof ArrayBuffer && e.data.byteLength >= 20) {
-            const decoded = decodeBinaryFrame(e.data);
-            this.onSpatialData?.(decoded);
+            this.onSpatialData?.(decodeBinaryFrame(e.data));
           }
         };
       } else if (channel.label === "reliable") {
@@ -302,23 +295,16 @@ var WebRTCAdapter = class {
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
     await this.waitForICE();
-    const response = await fetch(this.signalingUrl, {
-      method: "POST",
-      body: this.pc.localDescription.sdp,
-      headers: { "Content-Type": "application/sdp" }
-    });
-    if (!response.ok) {
-      throw new Error(`Signaling failed: ${response.status}`);
-    }
-    const answerSdp = await response.text();
+    const answerSdp = await this.exchangeSDP(this.pc.localDescription.sdp);
     await this.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("WebRTC connection timeout")), 1e4);
       const check = () => {
-        if (this.pc?.connectionState === "connected") {
+        const state = this.pc?.connectionState;
+        if (state === "connected") {
           clearTimeout(timeout);
           resolve();
-        } else if (this.pc?.connectionState === "failed") {
+        } else if (state === "failed") {
           clearTimeout(timeout);
           reject(new Error("WebRTC connection failed"));
         }
@@ -326,9 +312,7 @@ var WebRTCAdapter = class {
       this.pc.onconnectionstatechange = () => {
         check();
         const state = this.pc?.connectionState;
-        if (state === "disconnected" || state === "failed" || state === "closed") {
-          this.onClose?.();
-        }
+        if (state === "disconnected" || state === "failed" || state === "closed") this.onClose?.();
       };
       check();
     });
@@ -339,6 +323,44 @@ var WebRTCAdapter = class {
     } catch {
     }
     this.pc = null;
+  }
+  /** Exchange SDP: try fetch POST, fall back to popup window */
+  async exchangeSDP(offerSdp) {
+    try {
+      const res = await fetch(this.signalingUrl, {
+        method: "POST",
+        body: offerSdp,
+        headers: { "Content-Type": "application/sdp" }
+      });
+      if (res.ok) return await res.text();
+    } catch {
+    }
+    return this.exchangeSDPViaPopup(offerSdp);
+  }
+  exchangeSDPViaPopup(offerSdp) {
+    return new Promise((resolve, reject) => {
+      const offerB64 = btoa(offerSdp);
+      const baseUrl = this.signalingUrl.replace("/rtc/offer", "/rtc/connect-popup");
+      const url = `${baseUrl}?offer=${encodeURIComponent(offerB64)}`;
+      const popup = globalThis.open(url, "satmouse-rtc", "width=1,height=1,left=-100,top=-100");
+      if (!popup) {
+        reject(new Error("Popup blocked \u2014 user interaction required"));
+        return;
+      }
+      const timeout = setTimeout(() => {
+        popup.close();
+        reject(new Error("WebRTC signaling timeout"));
+      }, 1e4);
+      const onMessage = (event) => {
+        if (event.data?.type === "satmouse-rtc-answer") {
+          clearTimeout(timeout);
+          globalThis.removeEventListener("message", onMessage);
+          popup.close();
+          resolve(event.data.answer);
+        }
+      };
+      globalThis.addEventListener("message", onMessage);
+    });
   }
   waitForICE() {
     return new Promise((resolve) => {
