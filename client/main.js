@@ -497,12 +497,18 @@ var SatMouseConnection = class extends TypedEmitter {
       if (!this.intentionalClose) this.scheduleReconnect();
     };
     try {
-      await adapter.connect();
+      await Promise.race([
+        adapter.connect(),
+        new Promise(
+          (_, reject) => setTimeout(() => reject(new Error(`${adapter.protocol} connection timeout`)), 5e3)
+        )
+      ]);
       this.transport = adapter;
       this.retryCount = 0;
       this.setState("connected", adapter.protocol);
       return true;
     } catch (err) {
+      adapter.close();
       this.emit("error", err instanceof Error ? err : new Error(String(err)));
       return false;
     }
