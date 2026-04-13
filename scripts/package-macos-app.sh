@@ -25,47 +25,86 @@ mkdir -p "$APP/Contents/Resources/bin"
 cp "$NODE_BIN" "$APP/Contents/Resources/bin/node"
 chmod +x "$APP/Contents/Resources/bin/node"
 
-# Bundle dynamic libraries if node is dynamically linked (Homebrew builds)
-# The official Node.js builds from nodejs.org are statically linked and skip this.
-bundle_dylibs() {
-  local target_bin="$1"
-  local lib_dir="$2"
-  mkdir -p "$lib_dir"
-
-  # Find non-system dynamic libs
-  otool -L "$target_bin" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read -r lib; do
-    # Skip system libs and @rpath (handled separately)
-    case "$lib" in
-      /usr/lib/*|/System/*|@rpath/*) continue ;;
-    esac
-    if [ -f "$lib" ]; then
-      local name=$(basename "$lib")
-      cp "$lib" "$lib_dir/$name" 2>/dev/null || true
-      install_name_tool -change "$lib" "@executable_path/../lib/$name" "$target_bin" 2>/dev/null || true
-    fi
-  done
-
-  # Handle @rpath libs (like libnode.141.dylib)
-  otool -L "$target_bin" 2>/dev/null | grep "@rpath" | awk '{print $1}' | while read -r lib; do
-    local name=$(basename "$lib")
-    # Search common locations
-    for search in "/opt/homebrew/lib" "/usr/local/lib" "$(dirname "$NODE_BIN")/../lib"; do
-      if [ -f "$search/$name" ]; then
-        cp "$search/$name" "$lib_dir/$name" 2>/dev/null || true
-        install_name_tool -change "$lib" "@executable_path/../lib/$name" "$target_bin" 2>/dev/null || true
-        break
-      fi
-    done
-  done
-}
-
-# Check if node has non-system dynamic deps
+# Bundle dynamic libraries if node is dynamically linked (Homebrew builds).
+# Official Node.js builds from nodejs.org are statically linked and skip this.
+# Recursively finds and bundles all non-system dylibs + their transitive deps.
 if otool -L "$APP/Contents/MacOS/node" 2>/dev/null | grep -q "@rpath\|/opt/homebrew"; then
   echo "Bundling dynamic libraries for Homebrew Node..."
-  bundle_dylibs "$APP/Contents/MacOS/node" "$APP/Contents/lib"
-  bundle_dylibs "$APP/Contents/Resources/bin/node" "$APP/Contents/lib"
-  # Add @loader_path rpath for Resources/bin/node
+  LIB_DIR="$APP/Contents/lib"
+  mkdir -p "$LIB_DIR"
+  SEARCH_DIRS="/opt/homebrew/lib /usr/local/lib $(dirname "$NODE_BIN")/../lib"
+  BUNDLED=""
+
+  # Resolve a dylib path to an actual file
+  resolve_lib() {
+    local ref="$1"
+    case "$ref" in
+      /usr/lib/*|/System/*) return 1 ;;
+      @rpath/*)
+        local name="${ref#@rpath/}"
+        for d in $SEARCH_DIRS; do
+          [ -f "$d/$name" ] && echo "$d/$name" && return 0
+        done
+        return 1 ;;
+      @loader_path/*)
+        local name="${ref#@loader_path/}"
+        for d in $SEARCH_DIRS; do
+          [ -f "$d/$name" ] && echo "$d/$name" && return 0
+        done
+        return 1 ;;
+      /*)
+        [ -f "$ref" ] && echo "$ref" && return 0
+        return 1 ;;
+    esac
+    return 1
+  }
+
+  # Recursively bundle a binary's non-system dylib deps
+  bundle_deps() {
+    local binary="$1"
+    otool -L "$binary" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read -r ref; do
+      local resolved
+      resolved=$(resolve_lib "$ref") || continue
+      local name=$(basename "$resolved")
+
+      # Skip if already bundled
+      echo "$BUNDLED" | grep -qF "$name" && continue
+      BUNDLED="$BUNDLED $name"
+
+      # Copy to lib dir
+      cp "$resolved" "$LIB_DIR/$name" 2>/dev/null || continue
+      chmod 644 "$LIB_DIR/$name"
+
+      # Fix the reference in the binary
+      install_name_tool -change "$ref" "@rpath/$name" "$binary" 2>/dev/null || true
+
+      # Fix the dylib's own install name
+      install_name_tool -id "@rpath/$name" "$LIB_DIR/$name" 2>/dev/null || true
+
+      # Recurse: bundle this dylib's deps too
+      bundle_deps "$LIB_DIR/$name"
+    done
+  }
+
+  bundle_deps "$APP/Contents/MacOS/node"
+  bundle_deps "$APP/Contents/Resources/bin/node"
+
+  # Fix all bundled dylibs to reference each other via @rpath
+  for dylib in "$LIB_DIR"/*.dylib; do
+    [ -f "$dylib" ] || continue
+    otool -L "$dylib" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read -r ref; do
+      local resolved
+      resolved=$(resolve_lib "$ref") || continue
+      local name=$(basename "$resolved")
+      [ -f "$LIB_DIR/$name" ] && install_name_tool -change "$ref" "@rpath/$name" "$dylib" 2>/dev/null || true
+    done
+  done
+
+  # Add rpath to both node binaries so they find Contents/lib/
+  install_name_tool -add_rpath "@executable_path/../lib" "$APP/Contents/MacOS/node" 2>/dev/null || true
   install_name_tool -add_rpath "@executable_path/../../lib" "$APP/Contents/Resources/bin/node" 2>/dev/null || true
+
+  echo "Bundled $(ls "$LIB_DIR"/*.dylib 2>/dev/null | wc -l | tr -d ' ') dynamic libraries"
 fi
 
 # Copy bundled JS files
