@@ -31,6 +31,8 @@ export interface DeviceInfo {
   axisLabels?: string[];
   /** Number of buttons this device provides */
   buttonCount?: number;
+  /** Human-readable labels for buttons (indexed by targetButton) */
+  buttonLabels?: string[];
 }
 
 /** Events emitted by a DevicePlugin */

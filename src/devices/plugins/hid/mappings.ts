@@ -33,10 +33,12 @@ export interface AxisMapping {
 }
 
 export interface ButtonMapping {
-  /** Raw button index from the HID report */
+  /** Raw bit index in the button bytes */
   sourceButton: number;
   /** Target SatMouse button index */
   targetButton: number;
+  /** Human-readable label */
+  label?: string;
 }
 
 export interface HIDDeviceMapping {
@@ -52,6 +54,8 @@ export interface HIDDeviceMapping {
   axisOffset?: number;
   /** Byte offset where button data starts (default: after axes) */
   buttonOffset?: number;
+  /** Bitmask to apply to button bytes before comparing (filters d-pad, etc.) */
+  buttonMask?: number;
   /** Axis mappings */
   axes: AxisMapping[];
   /** Button mappings */
@@ -102,6 +106,7 @@ function loadProfiles(): HIDDeviceMapping[] {
       ...p,
       vendorId: typeof p.vendorId === "string" ? parseInt(p.vendorId, 16) : p.vendorId,
       productId: typeof p.productId === "string" ? parseInt(p.productId, 16) : p.productId,
+      buttonMask: typeof p.buttonMask === "string" ? parseInt(p.buttonMask, 16) : p.buttonMask,
       axes: p.axes.map((a: any) => ({ ...a, target: a.target as AxisTarget })),
     }));
   } catch (err) {

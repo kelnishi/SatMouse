@@ -158,7 +158,11 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
       this.accDirty = true;
     });
 
-    connection.on("buttonEvent", (event) => this.emit("buttonEvent", event));
+    connection.on("buttonEvent", (event) => {
+      // Check all device configs for matching button routes
+      this.dispatchButtonKeys(event);
+      this.emit("buttonEvent", event);
+    });
     connection.on("stateChange", (state, proto) => {
       this._state = state;
       this._protocol = proto;
@@ -263,5 +267,30 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
 
     // Global fallback
     return DEFAULT_ROUTES;
+  }
+
+  /** Dispatch KeyboardEvents for button routes matching this button event */
+  private dispatchButtonKeys(event: ButtonEvent): void {
+    if (typeof document === "undefined") return;
+
+    // Collect all button routes from all device configs + global
+    const allRoutes = this.collectButtonRoutes();
+    for (const route of allRoutes) {
+      if (route.button === event.button) {
+        document.dispatchEvent(new KeyboardEvent(
+          event.pressed ? "keydown" : "keyup",
+          { key: route.key, code: route.code ?? "", bubbles: true },
+        ));
+      }
+    }
+  }
+
+  /** Gather all button routes from global config + all device configs */
+  private collectButtonRoutes(): import("./config.js").ButtonRoute[] {
+    const routes = [...this._config.buttonRoutes];
+    for (const devCfg of Object.values(this._config.devices)) {
+      if (devCfg.buttonRoutes) routes.push(...devCfg.buttonRoutes);
+    }
+    return routes;
   }
 }

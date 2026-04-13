@@ -466,6 +466,7 @@ function applyRoutes(data, routes, scale = 1) {
 // packages/client/src/utils/config.ts
 var DEFAULT_CONFIG = {
   routes: DEFAULT_ROUTES,
+  buttonRoutes: [],
   scale: 1e-3,
   deadZone: 0,
   dominant: false,
@@ -500,6 +501,7 @@ function mergeConfig(base, partial) {
     ...base,
     ...partial,
     routes: partial.routes ?? [...base.routes],
+    buttonRoutes: partial.buttonRoutes ?? [...base.buttonRoutes],
     devices: { ...base.devices }
   };
   if (partial.devices) {
@@ -525,6 +527,7 @@ function resolveDeviceConfig(config, deviceId) {
   return {
     ...config,
     routes: deviceOverride.routes ?? config.routes,
+    buttonRoutes: deviceOverride.buttonRoutes ?? config.buttonRoutes,
     scale: deviceOverride.scale ?? config.scale,
     deadZone: deviceOverride.deadZone ?? config.deadZone,
     dominant: deviceOverride.dominant ?? config.dominant
@@ -681,7 +684,10 @@ var InputManager = class extends TypedEmitter {
       });
       this.accDirty = true;
     });
-    connection2.on("buttonEvent", (event) => this.emit("buttonEvent", event));
+    connection2.on("buttonEvent", (event) => {
+      this.dispatchButtonKeys(event);
+      this.emit("buttonEvent", event);
+    });
     connection2.on("stateChange", (state, proto) => {
       this._state = state;
       this._protocol = proto;
@@ -763,6 +769,27 @@ var InputManager = class extends TypedEmitter {
     }
     if (device?.axes) return buildRoutes(device.axes);
     return DEFAULT_ROUTES;
+  }
+  /** Dispatch KeyboardEvents for button routes matching this button event */
+  dispatchButtonKeys(event) {
+    if (typeof document === "undefined") return;
+    const allRoutes = this.collectButtonRoutes();
+    for (const route of allRoutes) {
+      if (route.button === event.button) {
+        document.dispatchEvent(new KeyboardEvent(
+          event.pressed ? "keydown" : "keyup",
+          { key: route.key, code: route.code ?? "", bubbles: true }
+        ));
+      }
+    }
+  }
+  /** Gather all button routes from global config + all device configs */
+  collectButtonRoutes() {
+    const routes = [...this._config.buttonRoutes];
+    for (const devCfg of Object.values(this._config.devices)) {
+      if (devCfg.buttonRoutes) routes.push(...devCfg.buttonRoutes);
+    }
+    return routes;
   }
 };
 
@@ -922,6 +949,19 @@ var STYLES = `
   .reset-btn { background: none; border: 1px solid #1a4a8a; border-radius: 3px; color: #7f8c8d;
                font-size: 11px; padding: 3px 8px; cursor: pointer; margin-top: 4px; }
   .reset-btn:hover { color: #e0e0e0; border-color: #e74c3c; }
+  .btn-section { display: flex; flex-direction: column; gap: 4px; }
+  .btn-section-label { color: #7f8c8d; font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .btn-route { display: flex; gap: 6px; align-items: center; font-size: 11px; }
+  .btn-route .btn-idx { color: #7f8c8d; font-family: monospace; min-width: 32px; }
+  .btn-route .btn-arrow { color: #7f8c8d; }
+  .btn-route .btn-key { color: #3498db; font-family: monospace; }
+  .btn-route .btn-remove { cursor: pointer; color: #e74c3c; background: none; border: none;
+                           font-size: 11px; padding: 0 2px; font-family: inherit; }
+  .btn-route .btn-remove:hover { color: #ff6b6b; }
+  .btn-add { background: none; border: 1px dashed #1a4a8a; border-radius: 3px; color: #7f8c8d;
+             font-size: 11px; padding: 4px 8px; cursor: pointer; font-family: inherit; }
+  .btn-add:hover { color: #e0e0e0; border-color: #3498db; }
+  .btn-add.listening { color: #f39c12; border-color: #f39c12; border-style: solid; cursor: default; }
 </style>
 `;
 function mapSlider(v) {
@@ -1045,6 +1085,41 @@ var SatMouseDevices = class extends HTMLElement {
       mgr.updateDeviceConfig(device.id, { scale: v });
     });
     controls.appendChild(sensRow);
+    const btnSection = document.createElement("div");
+    btnSection.className = "btn-section";
+    const btnLabel = document.createElement("div");
+    btnLabel.className = "btn-section-label";
+    btnLabel.textContent = "Button Mappings";
+    btnSection.appendChild(btnLabel);
+    const buttonRoutes = cfg.buttonRoutes ?? [];
+    for (let i = 0; i < buttonRoutes.length; i++) {
+      const route = buttonRoutes[i];
+      const row = document.createElement("div");
+      row.className = "btn-route";
+      row.innerHTML = `<span class="btn-idx">Btn ${route.button}</span><span class="btn-arrow">\u2192</span><span class="btn-key">${route.key}</span>`;
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "btn-remove";
+      removeBtn.textContent = "\xD7";
+      removeBtn.title = "Remove";
+      const routeIdx = i;
+      removeBtn.addEventListener("click", () => {
+        const current = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
+        const updated = current.filter((_, j) => j !== routeIdx);
+        mgr.updateDeviceConfig(device.id, { buttonRoutes: updated });
+        this.refreshControls(panel, device);
+      });
+      row.appendChild(removeBtn);
+      btnSection.appendChild(row);
+    }
+    const addBtn = document.createElement("button");
+    addBtn.className = "btn-add";
+    addBtn.textContent = "+ Add Button Mapping";
+    addBtn.addEventListener("click", () => {
+      if (addBtn.classList.contains("listening")) return;
+      this.startButtonListen(addBtn, mgr, device, panel);
+    });
+    btnSection.appendChild(addBtn);
+    controls.appendChild(btnSection);
     const resetBtn = document.createElement("button");
     resetBtn.className = "reset-btn";
     resetBtn.textContent = "Restore Defaults";
@@ -1070,6 +1145,42 @@ var SatMouseDevices = class extends HTMLElement {
     const base = this.getRoutes(deviceId, deviceAxes);
     const updated = base.map((r, j) => j === index ? { ...r, ...patch } : { ...r });
     this.manager.updateDeviceConfig(deviceId, { routes: updated });
+  }
+  startButtonListen(btn, mgr, device, panel) {
+    btn.classList.add("listening");
+    btn.textContent = "Press a device button...";
+    const onButton = (event) => {
+      if (!event.pressed) return;
+      mgr.off("buttonEvent", onButton);
+      const capturedButton = event.button;
+      btn.textContent = `Btn ${capturedButton} \u2192 Press a key...`;
+      const onKey = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        document.removeEventListener("keydown", onKey, true);
+        const route = {
+          button: capturedButton,
+          key: e.key,
+          code: e.code
+        };
+        const current = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
+        const updated = current.filter((r) => r.button !== capturedButton);
+        updated.push(route);
+        mgr.updateDeviceConfig(device.id, { buttonRoutes: updated });
+        this.refreshControls(panel, device);
+      };
+      document.addEventListener("keydown", onKey, true);
+    };
+    mgr.on("buttonEvent", onButton);
+    const onCancel = (e) => {
+      if (e.key === "Escape") {
+        mgr.off("buttonEvent", onButton);
+        document.removeEventListener("keydown", onCancel, true);
+        btn.classList.remove("listening");
+        btn.textContent = "+ Add Button Mapping";
+      }
+    };
+    document.addEventListener("keydown", onCancel, true);
   }
   removeDevice(device) {
     this.shadowRoot.getElementById(`dev-${device.id}`)?.remove();

@@ -65,6 +65,7 @@ export class HIDPlugin extends DevicePlugin {
           axes: mapping.axes.map((a) => a.target),
           axisLabels: mapping.axes.map((a) => a.label ?? a.target.toUpperCase()),
           buttonCount: mapping.buttons.length,
+          buttonLabels: mapping.buttons.map((b) => b.label ?? `Button ${b.targetButton}`),
         };
         this.devices.push(info);
         this.emit("deviceConnected", info);
@@ -194,11 +195,13 @@ export class HIDPlugin extends DevicePlugin {
     const btnOffset = mapping.buttonOffset ?? (offset + (mapping.axisFormat === "uint8" ? rawAxes.length : rawAxes.length * 2));
     const maxBtn = mapping.buttons.reduce((m, b) => Math.max(m, b.sourceButton), -1);
     const btnBytes = maxBtn >= 0 ? Math.ceil((maxBtn + 1) / 8) : 0;
+    const btnMask = mapping.buttonMask ?? 0xFFFFFFFF;
     if (btnBytes > 0 && report.length > btnOffset) {
       let buttons = 0;
       for (let i = btnOffset; i < Math.min(report.length, btnOffset + btnBytes); i++) {
         buttons |= report[i] << ((i - btnOffset) * 8);
       }
+      buttons &= btnMask; // Filter out d-pad or other non-button bits
       if (buttons !== prevButtons) {
         for (const bm of mapping.buttons) {
           const srcMask = 1 << bm.sourceButton;

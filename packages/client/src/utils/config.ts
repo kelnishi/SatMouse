@@ -1,9 +1,21 @@
 import { DEFAULT_ROUTES, type AxisRoute } from "./action-map.js";
 
+/** Maps a device button to a keyboard key */
+export interface ButtonRoute {
+  /** Device button index */
+  button: number;
+  /** Keyboard key value (KeyboardEvent.key, e.g., "a", "Shift", "ArrowUp") */
+  key: string;
+  /** Keyboard code (KeyboardEvent.code, e.g., "KeyA", "ShiftLeft"). Optional. */
+  code?: string;
+}
+
 /** Per-device configuration */
 export interface DeviceConfig {
   /** Axis routing — each entry maps a device input to an output with optional flip */
   routes?: AxisRoute[];
+  /** Button-to-key mappings */
+  buttonRoutes?: ButtonRoute[];
   /** Scale multiplier applied to all axes (default: 1) */
   scale?: number;
   /** Dead zone threshold (0-1). Values below this are zeroed. */
@@ -16,6 +28,8 @@ export interface DeviceConfig {
 export interface InputConfig {
   /** Default axis routes (used when device has no override) */
   routes: AxisRoute[];
+  /** Default button-to-key mappings */
+  buttonRoutes: ButtonRoute[];
   /** Default scale */
   scale: number;
   /** Dead zone threshold */
@@ -32,6 +46,7 @@ export interface InputConfig {
 
 export const DEFAULT_CONFIG: InputConfig = {
   routes: DEFAULT_ROUTES,
+  buttonRoutes: [],
   scale: 0.001,
   deadZone: 0,
   dominant: false,
@@ -67,6 +82,7 @@ export function mergeConfig(base: InputConfig, partial: Partial<InputConfig>): I
     ...base,
     ...partial,
     routes: partial.routes ?? [...base.routes],
+    buttonRoutes: partial.buttonRoutes ?? [...base.buttonRoutes],
     devices: { ...base.devices },
   };
 
@@ -99,6 +115,7 @@ export function resolveDeviceConfig(config: InputConfig, deviceId: string): Inpu
   return {
     ...config,
     routes: deviceOverride.routes ?? config.routes,
+    buttonRoutes: deviceOverride.buttonRoutes ?? config.buttonRoutes,
     scale: deviceOverride.scale ?? config.scale,
     deadZone: deviceOverride.deadZone ?? config.deadZone,
     dominant: deviceOverride.dominant ?? config.dominant,

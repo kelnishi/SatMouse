@@ -56,11 +56,16 @@
         { "sourceAxis": 7, "target": "ty", "label": "L2", "deadZone": 0.05, "unipolar": true },
         { "sourceAxis": 8, "target": "ry", "label": "R2", "deadZone": 0.05, "unipolar": true }
       ],
+      "buttonMask": "0xFFF0",
       "buttons": [
-        { "sourceButton": 0, "targetButton": 0 },
-        { "sourceButton": 1, "targetButton": 1 },
-        { "sourceButton": 2, "targetButton": 2 },
-        { "sourceButton": 3, "targetButton": 3 }
+        { "sourceButton": 4, "targetButton": 0, "label": "Square" },
+        { "sourceButton": 5, "targetButton": 1, "label": "Cross" },
+        { "sourceButton": 6, "targetButton": 2, "label": "Circle" },
+        { "sourceButton": 7, "targetButton": 3, "label": "Triangle" },
+        { "sourceButton": 12, "targetButton": 4, "label": "Create" },
+        { "sourceButton": 13, "targetButton": 5, "label": "Options" },
+        { "sourceButton": 14, "targetButton": 6, "label": "L3" },
+        { "sourceButton": 15, "targetButton": 7, "label": "R3" }
       ]
     }
   ]

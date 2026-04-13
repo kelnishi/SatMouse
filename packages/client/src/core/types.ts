@@ -36,6 +36,8 @@ export interface DeviceInfo {
   axisLabels?: string[];
   /** Number of buttons this device provides */
   buttonCount?: number;
+  /** Human-readable labels for buttons (indexed by targetButton) */
+  buttonLabels?: string[];
 }
 
 export type ConnectionState = "disconnected" | "connecting" | "connected" | "failed";
