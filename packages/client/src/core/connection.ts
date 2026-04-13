@@ -206,12 +206,19 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
     };
 
     try {
-      await adapter.connect();
+      // Timeout transport connection attempts to prevent hanging the fallback chain
+      await Promise.race([
+        adapter.connect(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`${adapter.protocol} connection timeout`)), 5000)
+        ),
+      ]);
       this.transport = adapter;
       this.retryCount = 0;
       this.setState("connected", adapter.protocol);
       return true;
     } catch (err) {
+      adapter.close();
       this.emit("error", err instanceof Error ? err : new Error(String(err)));
       return false;
     }
