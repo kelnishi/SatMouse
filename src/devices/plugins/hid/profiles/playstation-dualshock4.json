@@ -1,5 +1,6 @@
 {
   "name": "DualShock 4",
+  "deviceClass": "gamepad",
   "vendorId": "0x054c",
   "productId": "0x05c4",
   "note": "PS4 DualShock 4 (CUH-ZCT1). USB report 0x01. Also matches CUH-ZCT2 (0x09CC) via vendor wildcard fallback.",

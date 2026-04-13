@@ -67,6 +67,10 @@ export function buildDeviceInfo(productId: number, deviceId: string): DeviceInfo
   const axes = product.axes === 6 ? ["tx", "ty", "tz", "rx", "ry", "rz"]
     : product.axes === 1 ? ["rz"]
     : [];
+  const deviceClass = product.family === "spacemouse" ? "spacemouse" as const
+    : product.family === "orbion" ? "dial" as const
+    : product.family === "cadmouse" ? "other" as const
+    : "6dof" as const;
   return {
     id: deviceId,
     name: product.model,
@@ -75,6 +79,7 @@ export function buildDeviceInfo(productId: number, deviceId: string): DeviceInfo
     vendorId: CONNEXION_VENDOR_ID,
     productId,
     connectionType: product.connectionType,
+    deviceClass,
     axes,
     buttonCount: 32, // 3Dconnexion devices report up to 32 buttons
   };

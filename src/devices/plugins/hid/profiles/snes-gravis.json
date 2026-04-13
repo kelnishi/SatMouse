@@ -1,5 +1,6 @@
 {
   "name": "Gravis GamePad",
+  "deviceClass": "gamepad",
   "vendorId": "0x0428",
   "productId": "0x4001",
   "note": "Gravis SNES-style USB gamepad. Source: carldanley/node-gamepad.",

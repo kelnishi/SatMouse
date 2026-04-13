@@ -1,5 +1,6 @@
 {
   "name": "DualSense",
+  "deviceClass": "gamepad",
   "vendorId": "0x054c",
   "productId": "0x0ce6",
   "note": "PS5 DualSense. USB report 0x01. Triggers at bytes 5-6, buttons at bytes 8-10. Verified via raw dump.",

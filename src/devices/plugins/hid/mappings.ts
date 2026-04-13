@@ -48,6 +48,8 @@ export interface HIDDeviceMapping {
   vendorId: number;
   /** USB product ID (0 = match any) */
   productId: number;
+  /** Device form factor */
+  deviceClass?: string;
   /** Axis data format in HID report */
   axisFormat: "int16" | "uint8" | "int12";
   /** Byte offset where axis data starts in the report (default: 0) */

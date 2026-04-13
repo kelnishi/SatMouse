@@ -1,5 +1,6 @@
 {
   "name": "SNES Tomee",
+  "deviceClass": "gamepad",
   "vendorId": "0x12bd",
   "productId": "0xd015",
   "note": "Tomee SNES USB controller. Source: carldanley/node-gamepad.",

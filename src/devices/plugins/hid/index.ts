@@ -62,6 +62,7 @@ export class HIDPlugin extends DevicePlugin {
           vendorId: dev.vendorId,
           productId: dev.productId,
           connectionType: "usb",
+          deviceClass: (mapping.deviceClass ?? "gamepad") as any,
           axes: mapping.axes.map((a) => a.target),
           axisLabels: mapping.axes.map((a) => a.label ?? a.target.toUpperCase()),
           buttonCount: mapping.buttons.length + (mapping.hat ? 4 : 0),

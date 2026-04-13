@@ -1,5 +1,6 @@
 {
   "name": "Xbox Controller",
+  "deviceClass": "gamepad",
   "vendorId": "0x045e",
   "productId": "0x0000",
   "axisFormat": "uint8",

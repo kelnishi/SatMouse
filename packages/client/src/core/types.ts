@@ -22,6 +22,9 @@ export interface ButtonEvent {
   timestamp: number;
 }
 
+/** Device form factor */
+export type DeviceClass = "spacemouse" | "gamepad" | "dial" | "joystick" | "6dof" | "other";
+
 /** Device metadata from the bridge */
 export interface DeviceInfo {
   id: string;
@@ -31,6 +34,8 @@ export interface DeviceInfo {
   vendorId?: number;
   productId?: number;
   connectionType?: "usb" | "wireless" | "bluetooth" | "unknown";
+  /** General form factor */
+  deviceClass?: DeviceClass;
   connected?: boolean;
   /** Axes this device provides (e.g., ["tx","ty","tz","rx","ry","rz"] or ["tx","ty","rx","ry","tz+","rz+"]) */
   axes?: string[];
