@@ -5,20 +5,17 @@
   "description": "6DOF spatial input device bridge — connects web apps to SpaceMouse, gamepads, and HID devices.",
   "permissions": ["nativeMessaging"],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
-  "externally_connectable": {
-    "matches": [
-      "https://*.github.io/*",
-      "https://*.kelcite.app/*",
-      "https://localhost/*",
-      "http://localhost/*",
-      "http://127.0.0.1/*"
-    ]
-  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
   "icons": {
-    "48": "icon-48.png",
-    "128": "icon-128.png"
+    "48": "images/icon-48.png",
+    "128": "images/icon-128.png"
   }
 }

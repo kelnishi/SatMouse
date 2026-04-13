@@ -4,12 +4,12 @@ import type { SpatialData, ButtonEvent, DeviceInfo } from "../types.js";
 /**
  * Safari Web Extension transport adapter.
  *
- * Connects to the SatMouse extension via browser.runtime.connect().
- * The extension relays spatial data from the native bridge via stdin/stdout.
+ * Communicates with the SatMouse extension via window.postMessage.
+ * The extension's content script relays messages to the background
+ * service worker, which connects to the native bridge via stdin/stdout.
  *
- * This bypasses all HTTPS mixed-content restrictions because the
- * extension communicates with the bridge via native messaging (XPC/IPC),
- * not network requests.
+ * Detection: the content script posts { source: "satmouse-extension", type: "available" }
+ * on injection. The adapter listens for this to know the extension is present.
  */
 export class ExtensionAdapter implements Transport {
   readonly protocol = "extension" as const;
@@ -20,45 +20,39 @@ export class ExtensionAdapter implements Transport {
   onClose: (() => void) | null = null;
   onError: ((error: Error) => void) | null = null;
 
-  private port: any = null; // browser.runtime.Port
-  private extensionId: string;
+  private messageHandler: ((event: MessageEvent) => void) | null = null;
 
-  constructor(extensionId: string) {
-    this.extensionId = extensionId;
+  /** Check if the extension content script is present */
+  static isAvailable(): boolean {
+    return !!(globalThis as any).__satmouseExtensionAvailable;
+  }
+
+  /** Call early to start listening for the extension's availability signal */
+  static listen(): void {
+    if (typeof globalThis.addEventListener !== "function") return;
+    globalThis.addEventListener("message", (event: MessageEvent) => {
+      if (event.data?.source === "satmouse-extension" && event.data?.type === "available") {
+        (globalThis as any).__satmouseExtensionAvailable = true;
+      }
+    });
   }
 
   async connect(): Promise<void> {
-    const runtime = (globalThis as any).browser?.runtime ?? (globalThis as any).chrome?.runtime;
-    if (!runtime?.connect) {
-      throw new Error("Browser extension API not available");
+    if (typeof globalThis.postMessage !== "function") {
+      throw new Error("postMessage not available");
     }
 
     return new Promise<void>((resolve, reject) => {
-      try {
-        this.port = runtime.connect(this.extensionId);
-      } catch (err) {
-        reject(new Error("Failed to connect to SatMouse extension"));
-        return;
-      }
-
-      if (!this.port) {
-        reject(new Error("SatMouse extension not installed or not enabled"));
-        return;
-      }
-
-      let connected = false;
       const timeout = setTimeout(() => {
-        if (!connected) {
-          this.close();
-          reject(new Error("Extension connection timeout"));
-        }
-      }, 5000);
+        this.close();
+        reject(new Error("Extension connection timeout"));
+      }, 3000);
 
-      this.port.onMessage.addListener((msg: any) => {
-        if (!msg || typeof msg !== "object") return;
+      this.messageHandler = (event: MessageEvent) => {
+        if (event.data?.source !== "satmouse-extension") return;
+        const msg = event.data;
 
-        if (msg.type === "connected" && !connected) {
-          connected = true;
+        if (msg.type === "connected") {
           clearTimeout(timeout);
           resolve();
           return;
@@ -74,18 +68,14 @@ export class ExtensionAdapter implements Transport {
           return;
         }
 
-        // Validate spatial data
         if (msg.type === "spatialData" && msg.data) {
           const d = msg.data;
-          if (d.translation && d.rotation &&
-              typeof d.translation.x === "number" &&
-              typeof d.rotation.x === "number") {
+          if (d.translation && d.rotation) {
             this.onSpatialData?.(d as SpatialData);
           }
           return;
         }
 
-        // Validate button event
         if (msg.type === "buttonEvent" && msg.data) {
           const d = msg.data;
           if (typeof d.button === "number" && typeof d.pressed === "boolean") {
@@ -97,24 +87,29 @@ export class ExtensionAdapter implements Transport {
         if (msg.type === "deviceStatus" && msg.data) {
           this.onDeviceStatus?.(msg.data.event, msg.data.device);
         }
-      });
+      };
 
-      this.port.onDisconnect.addListener(() => {
-        if (!connected) {
-          clearTimeout(timeout);
-          reject(new Error("Extension disconnected during connect"));
-        } else {
-          this.onClose?.();
-        }
-      });
+      globalThis.addEventListener("message", this.messageHandler);
 
-      // Subscribe to spatial data stream
-      this.port.postMessage({ action: "subscribe" });
+      // Request connection from the content script
+      globalThis.postMessage({
+        target: "satmouse-extension",
+        action: "connect"
+      }, "*");
     });
   }
 
   close(): void {
-    try { this.port?.disconnect(); } catch {}
-    this.port = null;
+    if (this.messageHandler) {
+      globalThis.removeEventListener("message", this.messageHandler);
+      this.messageHandler = null;
+    }
+    globalThis.postMessage({
+      target: "satmouse-extension",
+      action: "disconnect"
+    }, "*");
   }
 }
+
+// Start listening for extension availability immediately
+ExtensionAdapter.listen();

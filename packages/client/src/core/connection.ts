@@ -142,10 +142,8 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
       }
       if (proto === "extension") {
         try {
-          const runtime = (globalThis as any).browser?.runtime ?? (globalThis as any).chrome?.runtime;
-          if (!runtime?.connect) continue;
-          const extensionId = this.options.extensionId ?? "";
-          const adapter = new ExtensionAdapter(extensionId);
+          if (!ExtensionAdapter.isAvailable()) continue;
+          const adapter = new ExtensionAdapter();
           if (await this.tryTransport(adapter)) return;
         } catch {
           continue;

@@ -255,39 +255,33 @@ var ExtensionAdapter = class {
   onDeviceStatus = null;
   onClose = null;
   onError = null;
-  port = null;
-  // browser.runtime.Port
-  extensionId;
-  constructor(extensionId) {
-    this.extensionId = extensionId;
+  messageHandler = null;
+  /** Check if the extension content script is present */
+  static isAvailable() {
+    return !!globalThis.__satmouseExtensionAvailable;
+  }
+  /** Call early to start listening for the extension's availability signal */
+  static listen() {
+    if (typeof globalThis.addEventListener !== "function") return;
+    globalThis.addEventListener("message", (event) => {
+      if (event.data?.source === "satmouse-extension" && event.data?.type === "available") {
+        globalThis.__satmouseExtensionAvailable = true;
+      }
+    });
   }
   async connect() {
-    const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
-    if (!runtime?.connect) {
-      throw new Error("Browser extension API not available");
+    if (typeof globalThis.postMessage !== "function") {
+      throw new Error("postMessage not available");
     }
     return new Promise((resolve, reject) => {
-      try {
-        this.port = runtime.connect(this.extensionId);
-      } catch (err) {
-        reject(new Error("Failed to connect to SatMouse extension"));
-        return;
-      }
-      if (!this.port) {
-        reject(new Error("SatMouse extension not installed or not enabled"));
-        return;
-      }
-      let connected = false;
       const timeout = setTimeout(() => {
-        if (!connected) {
-          this.close();
-          reject(new Error("Extension connection timeout"));
-        }
-      }, 5e3);
-      this.port.onMessage.addListener((msg) => {
-        if (!msg || typeof msg !== "object") return;
-        if (msg.type === "connected" && !connected) {
-          connected = true;
+        this.close();
+        reject(new Error("Extension connection timeout"));
+      }, 3e3);
+      this.messageHandler = (event) => {
+        if (event.data?.source !== "satmouse-extension") return;
+        const msg = event.data;
+        if (msg.type === "connected") {
           clearTimeout(timeout);
           resolve();
           return;
@@ -302,7 +296,7 @@ var ExtensionAdapter = class {
         }
         if (msg.type === "spatialData" && msg.data) {
           const d = msg.data;
-          if (d.translation && d.rotation && typeof d.translation.x === "number" && typeof d.rotation.x === "number") {
+          if (d.translation && d.rotation) {
             this.onSpatialData?.(d);
           }
           return;
@@ -317,26 +311,26 @@ var ExtensionAdapter = class {
         if (msg.type === "deviceStatus" && msg.data) {
           this.onDeviceStatus?.(msg.data.event, msg.data.device);
         }
-      });
-      this.port.onDisconnect.addListener(() => {
-        if (!connected) {
-          clearTimeout(timeout);
-          reject(new Error("Extension disconnected during connect"));
-        } else {
-          this.onClose?.();
-        }
-      });
-      this.port.postMessage({ action: "subscribe" });
+      };
+      globalThis.addEventListener("message", this.messageHandler);
+      globalThis.postMessage({
+        target: "satmouse-extension",
+        action: "connect"
+      }, "*");
     });
   }
   close() {
-    try {
-      this.port?.disconnect();
-    } catch {
+    if (this.messageHandler) {
+      globalThis.removeEventListener("message", this.messageHandler);
+      this.messageHandler = null;
     }
-    this.port = null;
+    globalThis.postMessage({
+      target: "satmouse-extension",
+      action: "disconnect"
+    }, "*");
   }
 };
+ExtensionAdapter.listen();
 
 // packages/client/src/core/connection.ts
 function parseSatMouseUri(uri) {
@@ -425,10 +419,8 @@ var SatMouseConnection = class extends TypedEmitter {
       }
       if (proto === "extension") {
         try {
-          const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
-          if (!runtime?.connect) continue;
-          const extensionId = this.options.extensionId ?? "";
-          const adapter = new ExtensionAdapter(extensionId);
+          if (!ExtensionAdapter.isAvailable()) continue;
+          const adapter = new ExtensionAdapter();
           if (await this.tryTransport(adapter)) return;
         } catch {
           continue;
