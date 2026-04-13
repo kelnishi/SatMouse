@@ -25,6 +25,49 @@ mkdir -p "$APP/Contents/Resources/bin"
 cp "$NODE_BIN" "$APP/Contents/Resources/bin/node"
 chmod +x "$APP/Contents/Resources/bin/node"
 
+# Bundle dynamic libraries if node is dynamically linked (Homebrew builds)
+# The official Node.js builds from nodejs.org are statically linked and skip this.
+bundle_dylibs() {
+  local target_bin="$1"
+  local lib_dir="$2"
+  mkdir -p "$lib_dir"
+
+  # Find non-system dynamic libs
+  otool -L "$target_bin" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read -r lib; do
+    # Skip system libs and @rpath (handled separately)
+    case "$lib" in
+      /usr/lib/*|/System/*|@rpath/*) continue ;;
+    esac
+    if [ -f "$lib" ]; then
+      local name=$(basename "$lib")
+      cp "$lib" "$lib_dir/$name" 2>/dev/null || true
+      install_name_tool -change "$lib" "@executable_path/../lib/$name" "$target_bin" 2>/dev/null || true
+    fi
+  done
+
+  # Handle @rpath libs (like libnode.141.dylib)
+  otool -L "$target_bin" 2>/dev/null | grep "@rpath" | awk '{print $1}' | while read -r lib; do
+    local name=$(basename "$lib")
+    # Search common locations
+    for search in "/opt/homebrew/lib" "/usr/local/lib" "$(dirname "$NODE_BIN")/../lib"; do
+      if [ -f "$search/$name" ]; then
+        cp "$search/$name" "$lib_dir/$name" 2>/dev/null || true
+        install_name_tool -change "$lib" "@executable_path/../lib/$name" "$target_bin" 2>/dev/null || true
+        break
+      fi
+    done
+  done
+}
+
+# Check if node has non-system dynamic deps
+if otool -L "$APP/Contents/MacOS/node" 2>/dev/null | grep -q "@rpath\|/opt/homebrew"; then
+  echo "Bundling dynamic libraries for Homebrew Node..."
+  bundle_dylibs "$APP/Contents/MacOS/node" "$APP/Contents/lib"
+  bundle_dylibs "$APP/Contents/Resources/bin/node" "$APP/Contents/lib"
+  # Add @loader_path rpath for Resources/bin/node
+  install_name_tool -add_rpath "@executable_path/../../lib" "$APP/Contents/Resources/bin/node" 2>/dev/null || true
+fi
+
 # Copy bundled JS files
 cp dist/main.js "$APP/Contents/Resources/main.cjs"
 cp dist/tray-wrapper.cjs "$APP/Contents/Resources/tray-wrapper.cjs"
