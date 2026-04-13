@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   console.log("──────────────────────────────────────────");
 
   const httpsPort = config.wsPort + 2;
-  const clientUrl = `https://localhost:${httpsPort}/client/`;
+  const clientUrl = `https://127.0.0.1:${httpsPort}/client/`;
   const shutdown = () => {
     console.log("\nShutting down...");
     mdns.stop();

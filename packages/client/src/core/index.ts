@@ -1,9 +1,9 @@
 export { SatMouseConnection, parseSatMouseUri, buildSatMouseUri } from "./connection.js";
 export { fetchThingDescription, resolveEndpoints } from "./discovery.js";
 export { decodeBinaryFrame, decodeWsBinaryFrame, decodeButtonStream } from "./decode.js";
-export { launchSatMouse } from "./launch.js";
+export { launchSatMouse, negotiateViaSatMouse, parseNegotiateCallback } from "./launch.js";
 export { TypedEmitter } from "./emitter.js";
-export type { LaunchOptions } from "./launch.js";
+export type { LaunchOptions, NegotiateResult } from "./launch.js";
 export type {
   SpatialData,
   ButtonEvent,

@@ -87,26 +87,42 @@ export class TDServer {
     console.log("[HTTP] Stopped");
   }
 
-  private setCORS(_req: IncomingMessage, res: ServerResponse): void {
-    // Allow any origin — SatMouse is a local bridge, 3rd party HTTPS clients need access
-    res.setHeader("Access-Control-Allow-Origin", "*");
+  private setCORS(req: IncomingMessage, res: ServerResponse): void {
+    const origin = req.headers.origin;
+
+    // PNA (Private Network Access / Local Network Access) requires:
+    // 1. Echo the specific requesting origin (no wildcard with PNA)
+    // 2. Access-Control-Allow-Private-Network: true
+    if (origin) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    } else {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    }
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Private-Network", "true");
+    res.setHeader("Access-Control-Max-Age", "86400");
+    res.setHeader("Vary", "Origin");
   }
 
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
     const url = req.url ?? "/";
     this.setCORS(req, res);
 
-    // Handle CORS preflight
+    // Handle CORS + PNA preflight
     if (req.method === "OPTIONS") {
       res.writeHead(204);
       res.end();
       return;
     }
 
-    if (url === "/td.json") {
+    if (url === "/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, version: process.env.npm_package_version ?? "unknown" }));
+    } else if (url === "/td.json") {
       this.serveTD(req, res);
+    } else if (url.startsWith("/negotiate")) {
+      this.serveNegotiate(req, res);
     } else if (url === "/api/device") {
       this.serveDeviceInfo(res);
     } else if (url.startsWith("/client")) {
@@ -169,6 +185,40 @@ export class TDServer {
       res.writeHead(500, { "Content-Type": "text/plain" });
       res.end("Failed to load Thing Description");
     }
+  }
+
+  /**
+   * Handle /negotiate — redirect back to the requesting origin with connection details.
+   * Used by the URI scheme tunnel when direct fetch is blocked (Safari LNA).
+   *
+   * GET /negotiate?origin=https://kelcite.app&callback=/satmouse-handshake
+   * → 302 https://kelcite.app/satmouse-handshake?ip=127.0.0.1&wsPort=18945&wtPort=18946&httpsPort=18947&certHash=...
+   */
+  private serveNegotiate(req: IncomingMessage, res: ServerResponse): void {
+    const parsed = new URL(req.url ?? "/", "http://localhost");
+    const origin = parsed.searchParams.get("origin");
+    const callback = parsed.searchParams.get("callback") ?? "/satmouse-handshake";
+    const challenge = parsed.searchParams.get("challenge") ?? "";
+
+    if (!origin) {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Missing origin parameter");
+      return;
+    }
+
+    // Build redirect URL with connection details
+    const params = new URLSearchParams({
+      ip: "127.0.0.1",
+      wsPort: String(this.config.wsPort),
+      wtPort: String(this.config.wtPort),
+      httpsPort: String(this.config.wsPort + 2),
+      ...(this.certHashBase64 && { certHash: this.certHashBase64 }),
+      ...(challenge && { challenge }),
+    });
+
+    const redirectUrl = `${origin}${callback}?${params}`;
+    res.writeHead(302, { Location: redirectUrl });
+    res.end();
   }
 
   private serveDeviceInfo(res: ServerResponse): void {

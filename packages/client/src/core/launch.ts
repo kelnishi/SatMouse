@@ -1,6 +1,52 @@
 const SCHEME_URL = "satmouse://launch";
 const PROJECT_URL = "https://github.com/kelnishi/SatMouse/releases/latest";
 
+/** Result of a URI scheme negotiation */
+export interface NegotiateResult {
+  ip: string;
+  wsPort: number;
+  wtPort: number;
+  httpsPort: number;
+  certHash?: string;
+  challenge?: string;
+}
+
+/**
+ * Trigger the satmouse://negotiate URI scheme for discovery when direct
+ * HTTP/HTTPS fetch is blocked (Safari LNA).
+ *
+ * The bridge intercepts the URI, then redirects back to your origin with
+ * connection details as query parameters. Your app handles the callback
+ * route and passes the result to SatMouseConnection.
+ *
+ * @param origin - Your app's origin (e.g., "https://kelcite.app")
+ * @param callbackPath - Path the bridge redirects to (default: "/satmouse-handshake")
+ * @param challenge - Optional challenge token for verification
+ */
+export function negotiateViaSatMouse(origin: string, callbackPath = "/satmouse-handshake", challenge?: string): void {
+  const params = new URLSearchParams({ origin, callback: callbackPath });
+  if (challenge) params.set("challenge", challenge);
+  globalThis.location.href = `satmouse://negotiate?${params}`;
+}
+
+/**
+ * Parse the negotiate callback URL parameters (called on your callback route).
+ * Returns connection details or null if the params are missing.
+ */
+export function parseNegotiateCallback(searchParams: URLSearchParams): NegotiateResult | null {
+  const ip = searchParams.get("ip");
+  const wsPort = searchParams.get("wsPort");
+  if (!ip || !wsPort) return null;
+  return {
+    ip,
+    wsPort: parseInt(wsPort, 10),
+    wtPort: parseInt(searchParams.get("wtPort") ?? "18946", 10),
+    httpsPort: parseInt(searchParams.get("httpsPort") ?? "18947", 10),
+    certHash: searchParams.get("certHash") ?? undefined,
+    challenge: searchParams.get("challenge") ?? undefined,
+  };
+}
+
 export interface LaunchOptions {
   /** URL scheme to open. Default: "satmouse://launch" */
   schemeUrl?: string;

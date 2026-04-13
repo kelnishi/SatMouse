@@ -92,10 +92,15 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
 
     if (!wtUrl && !wsUrl) {
       const tdUrl = this.options.tdUrl;
-      // Try HTTPS first (works from HTTPS pages), fall back to HTTP
+      // Use 127.0.0.1 (not localhost) — Safari treats the loopback IP as a
+      // "Potentially Trustworthy Origin" more reliably than the hostname.
+      // Try HTTPS first (works from HTTPS pages), fall back to HTTP.
       const tdUrls = tdUrl
         ? [tdUrl]
-        : ["https://localhost:18947/td.json", "http://localhost:18945/td.json"];
+        : [
+            "https://127.0.0.1:18947/td.json",
+            "http://127.0.0.1:18945/td.json",
+          ];
 
       let resolved = false;
       for (const url of tdUrls) {
@@ -114,7 +119,7 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
       }
       if (!resolved) {
         this.emit("error", new Error("Failed to fetch Thing Description"));
-        wsUrl = "ws://localhost:18945/spatial";
+        wsUrl = "ws://127.0.0.1:18945/spatial";
       }
     }
 

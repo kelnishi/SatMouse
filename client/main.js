@@ -298,7 +298,10 @@ var SatMouseConnection = class extends TypedEmitter {
     }
     if (!wtUrl && !wsUrl) {
       const tdUrl = this.options.tdUrl;
-      const tdUrls = tdUrl ? [tdUrl] : ["https://localhost:18947/td.json", "http://localhost:18945/td.json"];
+      const tdUrls = tdUrl ? [tdUrl] : [
+        "https://127.0.0.1:18947/td.json",
+        "http://127.0.0.1:18945/td.json"
+      ];
       let resolved = false;
       for (const url of tdUrls) {
         try {
@@ -315,7 +318,7 @@ var SatMouseConnection = class extends TypedEmitter {
       }
       if (!resolved) {
         this.emit("error", new Error("Failed to fetch Thing Description"));
-        wsUrl = "ws://localhost:18945/spatial";
+        wsUrl = "ws://127.0.0.1:18945/spatial";
       }
     }
     for (const proto of this.options.transports) {

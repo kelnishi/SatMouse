@@ -625,7 +625,7 @@
       reconnectDelay: 5000,
     });
 
-    // If connection fails (likely cert not trusted), show hint
+    // If connection fails, show hint about cert trust
     connection.on("stateChange", (state) => {
       const toolbar = document.querySelector(".demo-toolbar");
       if (!toolbar) return;
@@ -634,7 +634,7 @@
         const hint = document.createElement("span");
         hint.className = "cert-hint";
         hint.style.cssText = "color: #f39c12; font-size: 11px;";
-        hint.textContent = "Open Web Client from the SatMouse tray menu to enable secure connections.";
+        hint.textContent = "Open Web Client from the SatMouse tray to trust the local certificate.";
         toolbar.appendChild(hint);
       } else if (state === "connected" && existing) {
         existing.remove();
