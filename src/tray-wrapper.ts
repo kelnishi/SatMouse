@@ -84,7 +84,7 @@ function main() {
   let serverProcess: ChildProcess | null = null;
 
   const openClientCb = koffi.register(() => {
-    openBrowser("https://127.0.0.1:18947/client/");
+    openBrowser("http://127.0.0.1:18945/client/");
   }, koffi.pointer(ActionProto));
 
   const rescanCb = koffi.register(() => {
