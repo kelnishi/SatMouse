@@ -247,136 +247,6 @@ var WebSocketAdapter = class {
   }
 };
 
-// packages/client/src/core/transports/webrtc.ts
-var WebRTCAdapter = class {
-  protocol = "webrtc";
-  onSpatialData = null;
-  onButtonEvent = null;
-  onDeviceStatus = null;
-  onClose = null;
-  onError = null;
-  pc = null;
-  signalingUrl;
-  constructor(signalingUrl) {
-    this.signalingUrl = signalingUrl;
-  }
-  async connect() {
-    if (typeof globalThis.RTCPeerConnection === "undefined") {
-      throw new Error("RTCPeerConnection not available");
-    }
-    this.pc = new RTCPeerConnection({ iceServers: [] });
-    this.pc.ondatachannel = (event) => {
-      const channel = event.channel;
-      if (channel.label === "spatial") {
-        channel.binaryType = "arraybuffer";
-        channel.onmessage = (e) => {
-          if (e.data instanceof ArrayBuffer && e.data.byteLength >= 20) {
-            this.onSpatialData?.(decodeBinaryFrame(e.data));
-          }
-        };
-      } else if (channel.label === "reliable") {
-        channel.onmessage = (e) => {
-          try {
-            const text = typeof e.data === "string" ? e.data : new TextDecoder().decode(e.data);
-            const msg = JSON.parse(text);
-            if (msg.type === "buttonEvent") this.onButtonEvent?.(msg.data);
-            else if (msg.type === "deviceStatus") this.onDeviceStatus?.(msg.data.event, msg.data.device);
-          } catch {
-          }
-        };
-      }
-    };
-    this.pc.onconnectionstatechange = () => {
-      const state = this.pc?.connectionState;
-      if (state === "disconnected" || state === "failed" || state === "closed") {
-        this.onClose?.();
-      }
-    };
-    const offer = await this.pc.createOffer();
-    await this.pc.setLocalDescription(offer);
-    await this.waitForICE();
-    const answerSdp = await this.exchangeSDP(this.pc.localDescription.sdp);
-    await this.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("WebRTC connection timeout")), 1e4);
-      const check = () => {
-        const state = this.pc?.connectionState;
-        if (state === "connected") {
-          clearTimeout(timeout);
-          resolve();
-        } else if (state === "failed") {
-          clearTimeout(timeout);
-          reject(new Error("WebRTC connection failed"));
-        }
-      };
-      this.pc.onconnectionstatechange = () => {
-        check();
-        const state = this.pc?.connectionState;
-        if (state === "disconnected" || state === "failed" || state === "closed") this.onClose?.();
-      };
-      check();
-    });
-  }
-  close() {
-    try {
-      this.pc?.close();
-    } catch {
-    }
-    this.pc = null;
-  }
-  /** Exchange SDP: try fetch POST, fall back to popup window */
-  async exchangeSDP(offerSdp) {
-    try {
-      const res = await fetch(this.signalingUrl, {
-        method: "POST",
-        body: offerSdp,
-        headers: { "Content-Type": "application/sdp" }
-      });
-      if (res.ok) return await res.text();
-    } catch {
-    }
-    return this.exchangeSDPViaPopup(offerSdp);
-  }
-  exchangeSDPViaPopup(offerSdp) {
-    return new Promise((resolve, reject) => {
-      const offerB64 = btoa(offerSdp);
-      const baseUrl = this.signalingUrl.replace("/rtc/offer", "/rtc/connect-popup");
-      const url = `${baseUrl}?offer=${encodeURIComponent(offerB64)}`;
-      const popup = globalThis.open(url, "satmouse-rtc", "width=1,height=1,left=-100,top=-100");
-      if (!popup) {
-        reject(new Error("Popup blocked \u2014 user interaction required"));
-        return;
-      }
-      const timeout = setTimeout(() => {
-        popup.close();
-        reject(new Error("WebRTC signaling timeout"));
-      }, 1e4);
-      const onMessage = (event) => {
-        if (event.data?.type === "satmouse-rtc-answer") {
-          clearTimeout(timeout);
-          globalThis.removeEventListener("message", onMessage);
-          popup.close();
-          resolve(event.data.answer);
-        }
-      };
-      globalThis.addEventListener("message", onMessage);
-    });
-  }
-  waitForICE() {
-    return new Promise((resolve) => {
-      if (!this.pc) return resolve();
-      if (this.pc.iceGatheringState === "complete") return resolve();
-      const timeout = setTimeout(resolve, 2e3);
-      this.pc.onicegatheringstatechange = () => {
-        if (this.pc?.iceGatheringState === "complete") {
-          clearTimeout(timeout);
-          resolve();
-        }
-      };
-    });
-  }
-};
-
 // packages/client/src/core/transports/extension.ts
 var ExtensionAdapter = class {
   protocol = "extension";
@@ -481,7 +351,7 @@ function parseSatMouseUri(uri) {
   };
 }
 var DEFAULT_OPTIONS = {
-  transports: ["webtransport", "webrtc", "extension", "websocket"],
+  transports: ["webtransport", "extension", "websocket"],
   reconnectDelay: 2e3,
   maxRetries: 3,
   wsSubprotocol: "satmouse-json"
@@ -548,16 +418,6 @@ var SatMouseConnection = class extends TypedEmitter {
         try {
           if (typeof globalThis.WebTransport === "undefined") continue;
           const adapter = new WebTransportAdapter(wtUrl, certHash);
-          if (await this.tryTransport(adapter)) return;
-        } catch {
-          continue;
-        }
-      }
-      if (proto === "webrtc") {
-        try {
-          if (typeof globalThis.RTCPeerConnection === "undefined") continue;
-          const rtcUrl = this.options.rtcUrl ?? `http://127.0.0.1:18945/rtc/offer`;
-          const adapter = new WebRTCAdapter(rtcUrl);
           if (await this.tryTransport(adapter)) return;
         } catch {
           continue;

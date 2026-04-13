@@ -48,7 +48,7 @@ export interface DeviceInfo {
 }
 
 export type ConnectionState = "disconnected" | "connecting" | "connected" | "failed";
-export type TransportProtocol = "webtransport" | "webrtc" | "extension" | "websocket" | "none";
+export type TransportProtocol = "webtransport" | "extension" | "websocket" | "none";
 
 export interface SatMouseEvents {
   spatialData: (data: SpatialData) => void;
@@ -90,8 +90,6 @@ export interface ConnectOptions {
   wsUrl?: string;
   /** Direct WebTransport URL (skips discovery) */
   wtUrl?: string;
-  /** WebRTC signaling URL (default: http://127.0.0.1:18945/rtc/offer) */
-  rtcUrl?: string;
   /** Safari extension ID for extension transport */
   extensionId?: string;
   /** Certificate hash for self-signed WebTransport certs (base64) */

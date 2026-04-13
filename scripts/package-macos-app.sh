@@ -37,6 +37,18 @@ if [ -f "assets/icons/SatMouse.icns" ]; then
   cp assets/icons/SatMouse.icns "$APP/Contents/Resources/SatMouse.icns"
 fi
 
+# Build and bundle Safari Web Extension
+if [ -f "src/extension/safari/SafariWebExtensionHandler.swift" ]; then
+  echo "Building Safari Web Extension..."
+  mkdir -p "$APP/Contents/PlugIns"
+  bash scripts/build-safari-extension.sh "$APP/Contents/PlugIns/SatMouse Extension.appex"
+fi
+
+# Copy native messaging host
+if [ -f "src/extension/native-messaging-host.js" ]; then
+  cp src/extension/native-messaging-host.js "$APP/Contents/Resources/native-messaging-host.js"
+fi
+
 # Compile a native launcher (CFBundleExecutable).
 # Fork-based: parent stays alive as the macOS-tracked process (for window
 # server identity and menu bar icon), child execs node with tray-wrapper.
