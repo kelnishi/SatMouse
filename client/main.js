@@ -377,6 +377,97 @@ var WebRTCAdapter = class {
   }
 };
 
+// packages/client/src/core/transports/extension.ts
+var ExtensionAdapter = class {
+  protocol = "extension";
+  onSpatialData = null;
+  onButtonEvent = null;
+  onDeviceStatus = null;
+  onClose = null;
+  onError = null;
+  port = null;
+  // browser.runtime.Port
+  extensionId;
+  constructor(extensionId) {
+    this.extensionId = extensionId;
+  }
+  async connect() {
+    const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
+    if (!runtime?.connect) {
+      throw new Error("Browser extension API not available");
+    }
+    return new Promise((resolve, reject) => {
+      try {
+        this.port = runtime.connect(this.extensionId);
+      } catch (err) {
+        reject(new Error("Failed to connect to SatMouse extension"));
+        return;
+      }
+      if (!this.port) {
+        reject(new Error("SatMouse extension not installed or not enabled"));
+        return;
+      }
+      let connected = false;
+      const timeout = setTimeout(() => {
+        if (!connected) {
+          this.close();
+          reject(new Error("Extension connection timeout"));
+        }
+      }, 5e3);
+      this.port.onMessage.addListener((msg) => {
+        if (!msg || typeof msg !== "object") return;
+        if (msg.type === "connected" && !connected) {
+          connected = true;
+          clearTimeout(timeout);
+          resolve();
+          return;
+        }
+        if (msg.type === "disconnected") {
+          this.onClose?.();
+          return;
+        }
+        if (msg.type === "error") {
+          this.onError?.(new Error(msg.message ?? "Extension error"));
+          return;
+        }
+        if (msg.type === "spatialData" && msg.data) {
+          const d = msg.data;
+          if (d.translation && d.rotation && typeof d.translation.x === "number" && typeof d.rotation.x === "number") {
+            this.onSpatialData?.(d);
+          }
+          return;
+        }
+        if (msg.type === "buttonEvent" && msg.data) {
+          const d = msg.data;
+          if (typeof d.button === "number" && typeof d.pressed === "boolean") {
+            this.onButtonEvent?.(d);
+          }
+          return;
+        }
+        if (msg.type === "deviceStatus" && msg.data) {
+          this.onDeviceStatus?.(msg.data.event, msg.data.device);
+        }
+      });
+      this.port.onDisconnect.addListener(() => {
+        if (!connected) {
+          clearTimeout(timeout);
+          reject(new Error("Extension disconnected during connect"));
+        } else {
+          this.onClose?.();
+        }
+      });
+      this.port.postMessage({ action: "subscribe" });
+    });
+  }
+  close() {
+    try {
+      this.port?.disconnect();
+    } catch {
+    }
+    this.port = null;
+  }
+};
+
 // packages/client/src/core/connection.ts
 function parseSatMouseUri(uri) {
   const url = new URL(uri);
@@ -390,7 +481,7 @@ function parseSatMouseUri(uri) {
   };
 }
 var DEFAULT_OPTIONS = {
-  transports: ["webtransport", "webrtc", "websocket"],
+  transports: ["webtransport", "webrtc", "extension", "websocket"],
   reconnectDelay: 2e3,
   maxRetries: 3,
   wsSubprotocol: "satmouse-json"
@@ -467,6 +558,17 @@ var SatMouseConnection = class extends TypedEmitter {
           if (typeof globalThis.RTCPeerConnection === "undefined") continue;
           const rtcUrl = this.options.rtcUrl ?? `http://127.0.0.1:18945/rtc/offer`;
           const adapter = new WebRTCAdapter(rtcUrl);
+          if (await this.tryTransport(adapter)) return;
+        } catch {
+          continue;
+        }
+      }
+      if (proto === "extension") {
+        try {
+          const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
+          if (!runtime?.connect) continue;
+          const extensionId = this.options.extensionId ?? "";
+          const adapter = new ExtensionAdapter(extensionId);
           if (await this.tryTransport(adapter)) return;
         } catch {
           continue;

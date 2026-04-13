@@ -1,53 +1,59 @@
 import { RTCPeerConnection, RTCSessionDescription } from "werift";
 import type { SpatialData, ButtonEvent, DeviceInfo } from "../devices/types.js";
 
-/**
- * WebRTC data channel transport server.
- *
- * Each client connects via SDP offer/answer exchange. The bridge creates
- * an RTCPeerConnection per client and sends spatial data + button events
- * over data channels.
- *
- * Signaling goes through HTTP POST (/rtc/offer) or navigate-redirect
- * (/rtc/connect) for browsers that can't POST to localhost.
- *
- * No trusted certs needed — WebRTC uses DTLS with self-signed certs
- * and the SDP exchange handles fingerprint verification.
- */
+const MAX_PEERS = 16;
+const MAX_SDP_SIZE = 16384; // 16KB
+
+/** Clamp to int16, reject NaN/Infinity */
+function clampInt16(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(-32768, Math.min(32767, Math.round(v)));
+}
 
 interface PeerSession {
   pc: RTCPeerConnection;
-  spatial: any; // RTCDataChannel
-  reliable: any; // RTCDataChannel for buttons/status
+  spatial: any;
+  reliable: any;
 }
 
 export class WebRTCServer {
   private sessions = new Set<PeerSession>();
 
   /**
-   * Process an SDP offer from a client and return an SDP answer.
-   * Called by the HTTP signaling endpoint.
+   * Process an SDP offer and return an SDP answer.
+   * Validates offer before processing.
    */
   async handleOffer(offerSdp: string): Promise<string> {
-    const pc = new RTCPeerConnection({
-      iceServers: [], // Local network, no STUN/TURN needed
-    });
+    // Validate offer
+    if (!offerSdp || typeof offerSdp !== "string") {
+      throw new Error("Invalid SDP offer: not a string");
+    }
+    if (offerSdp.length > MAX_SDP_SIZE) {
+      throw new Error(`SDP offer too large: ${offerSdp.length} > ${MAX_SDP_SIZE}`);
+    }
+    if (!offerSdp.startsWith("v=0")) {
+      throw new Error("Invalid SDP offer: must start with v=0");
+    }
 
+    // Connection limit
+    if (this.sessions.size >= MAX_PEERS) {
+      throw new Error(`Maximum peer connections reached (${MAX_PEERS})`);
+    }
+
+    const pc = new RTCPeerConnection({ iceServers: [] });
     const session: PeerSession = { pc, spatial: null, reliable: null };
 
-    // Create data channels (server-initiated)
     const spatialChannel = pc.createDataChannel("spatial", {
-      ordered: false,      // Unordered for lowest latency
-      maxRetransmits: 0,   // Unreliable — latest value always wins
+      ordered: false,
+      maxRetransmits: 0,
     });
     session.spatial = spatialChannel;
 
     const reliableChannel = pc.createDataChannel("reliable", {
-      ordered: true,       // Ordered + reliable for buttons/status
+      ordered: true,
     });
     session.reliable = reliableChannel;
 
-    // Track session lifecycle
     pc.connectionStateChange.subscribe(() => {
       const state = pc.connectionState;
       if (state === "disconnected" || state === "failed" || state === "closed") {
@@ -56,7 +62,6 @@ export class WebRTCServer {
       }
     });
 
-    // Set remote offer and create answer
     await pc.setRemoteDescription(new RTCSessionDescription(offerSdp, "offer"));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
@@ -70,15 +75,14 @@ export class WebRTCServer {
   broadcastSpatialData(data: SpatialData): void {
     if (this.sessions.size === 0) return;
 
-    // Encode as 24-byte binary (same format as WebTransport datagrams)
     const buf = Buffer.allocUnsafe(24);
-    buf.writeDoubleLE(data.timestamp, 0);
-    buf.writeInt16LE(Math.round(data.translation.x), 8);
-    buf.writeInt16LE(Math.round(data.translation.y), 10);
-    buf.writeInt16LE(Math.round(data.translation.z), 12);
-    buf.writeInt16LE(Math.round(data.rotation.x), 14);
-    buf.writeInt16LE(Math.round(data.rotation.y), 16);
-    buf.writeInt16LE(Math.round(data.rotation.z), 18);
+    buf.writeDoubleLE(Number.isFinite(data.timestamp) ? data.timestamp : 0, 0);
+    buf.writeInt16LE(clampInt16(data.translation.x), 8);
+    buf.writeInt16LE(clampInt16(data.translation.y), 10);
+    buf.writeInt16LE(clampInt16(data.translation.z), 12);
+    buf.writeInt16LE(clampInt16(data.rotation.x), 14);
+    buf.writeInt16LE(clampInt16(data.rotation.y), 16);
+    buf.writeInt16LE(clampInt16(data.rotation.z), 18);
     buf.writeUInt32LE(0, 20);
 
     const bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
@@ -88,14 +92,14 @@ export class WebRTCServer {
         if (session.spatial?.readyState === "open") {
           session.spatial.send(bytes);
         }
-      } catch {
-        // Will be cleaned up on disconnect
-      }
+      } catch {}
     }
   }
 
   broadcastButtonEvent(data: ButtonEvent): void {
     if (this.sessions.size === 0) return;
+    // Validate button index
+    if (!Number.isInteger(data.button) || data.button < 0 || data.button > 31) return;
     const json = JSON.stringify({ type: "buttonEvent", data });
     const bytes = new TextEncoder().encode(json);
 
