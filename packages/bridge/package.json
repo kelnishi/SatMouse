@@ -1,6 +1,6 @@
 {
   "name": "@kelnishi/satmouse",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "description": "6DOF spatial input bridge — run with npx @kelnishi/satmouse",
   "license": "MIT",
   "bin": {
@@ -9,9 +9,18 @@
   "scripts": {
     "postinstall": "node bin/install.js"
   },
-  "files": ["bin"],
-  "os": ["darwin", "linux", "win32"],
-  "cpu": ["arm64", "x64"],
+  "files": [
+    "bin"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "arm64",
+    "x64"
+  ],
   "homepage": "https://kelnishi.github.io/SatMouse/",
   "repository": {
     "type": "git",
