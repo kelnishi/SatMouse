@@ -8,6 +8,9 @@ header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
 header img { border-radius: 12px; }
 h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
 .version { color: #7f8c8d; font-size: 13px; }
+.header-links { margin-left: auto; display: flex; flex-direction: column; gap: 4px; text-align: right; }
+.header-links a { color: #3498db; text-decoration: none; font-size: 12px; }
+.header-links a:hover { text-decoration: underline; }
 section { margin-bottom: 16px; }
 h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #7f8c8d; margin-bottom: 8px; }
 .status-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #16213e; border-radius: 8px; transition: background 0.15s; }
@@ -25,5 +28,4 @@ h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #7f
 .client-row .transport { color: #3498db; font-family: "SF Mono", monospace; font-size: 11px; }
 .client-row .ext-badge { font-size: 9px; padding: 1px 5px; border-radius: 6px; background: #2ecc71; color: #fff; font-weight: 600; }
 footer { text-align: center; padding-top: 12px; border-top: 1px solid #16213e; }
-footer a { color: #3498db; text-decoration: none; font-size: 12px; }
-footer a:hover { text-decoration: underline; }
+footer .copyright { color: #7f8c8d; font-size: 11px; }

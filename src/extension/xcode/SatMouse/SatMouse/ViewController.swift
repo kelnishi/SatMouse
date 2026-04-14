@@ -37,6 +37,8 @@ class ViewController: NSViewController, WKNavigationDelegate, WKScriptMessageHan
         guard let body = message.body as? String else { return }
         if body == "open-project" {
             NSWorkspace.shared.open(URL(string: "https://kelnishi.github.io/SatMouse")!)
+        } else if body == "open-client" {
+            NSWorkspace.shared.open(URL(string: "http://127.0.0.1:18945/client/")!)
         } else if body == "open-extension-settings" {
             SFSafariApplication.showPreferencesForExtension(
                 withIdentifier: extensionBundleIdentifier

@@ -47,6 +47,12 @@ document.getElementById("project-link").addEventListener("click", function(e) {
     webkit.messageHandlers.controller.postMessage("open-project");
 });
 
+// Reference client link
+document.getElementById("client-link").addEventListener("click", function(e) {
+    e.preventDefault();
+    webkit.messageHandlers.controller.postMessage("open-client");
+});
+
 function updateDevices(devices) {
     var list = document.getElementById("device-list");
     if (!devices || devices.length === 0) {
