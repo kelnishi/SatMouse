@@ -118,7 +118,7 @@ fi
 echo "Re-signing..."
 
 # Get the signing identity from the Xcode-built main binary
-IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" | head -1 | awk '{print $2}')
+IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" | head -1 | awk '{print $2}' || true)
 if [ -z "$IDENTITY" ]; then
   echo "  Warning: No signing identity found, using ad-hoc"
   IDENTITY="-"
