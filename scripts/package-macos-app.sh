@@ -7,6 +7,22 @@ APP="dist/SatMouse.app"
 
 echo "=== Packaging SatMouse.app ==="
 
+# Sync version from package.json into extension manifest + Xcode Info.plist
+PKG_VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf-8')).version)")
+echo "  Version: $PKG_VERSION"
+
+# Update extension manifest version
+if [ -f "src/extension/safari/manifest.json" ]; then
+  node -e "
+    const m = JSON.parse(require('fs').readFileSync('src/extension/safari/manifest.json','utf-8'));
+    m.version = '$PKG_VERSION';
+    require('fs').writeFileSync('src/extension/safari/manifest.json', JSON.stringify(m, null, 2) + '\n');
+  "
+  # Also update in the Xcode project copy
+  EXT_RES="src/extension/xcode/SatMouse/SatMouse Extension/Resources/manifest.json"
+  [ -f "$EXT_RES" ] && cp src/extension/safari/manifest.json "$EXT_RES"
+fi
+
 # Step 1: Get Node.js binary
 if [ -n "${1:-}" ]; then
   NODE_BIN="$1"
