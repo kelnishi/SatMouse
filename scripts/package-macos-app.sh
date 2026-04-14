@@ -111,12 +111,13 @@ if [ -z "$IDENTITY" ]; then
   IDENTITY="-"
 fi
 
-# Get entitlements from the Xcode-signed binary (preserve them exactly)
-codesign -d --entitlements /tmp/satmouse-app.entitlements "$APP/Contents/MacOS/SatMouse" 2>/dev/null || true
+# Use the Xcode entitlements file directly (extraction from signed binary
+# produces binary plist with FADE7171 header that codesign can't re-apply)
+APP_ENTITLEMENTS="src/extension/xcode/SatMouse/SatMouse/SatMouse.entitlements"
 
-# Sign Node binary
+# Sign Node binary with app entitlements (needs USB, network, bluetooth)
 codesign --force --sign "$IDENTITY" \
-  --entitlements /tmp/satmouse-app.entitlements \
+  --entitlements "$APP_ENTITLEMENTS" \
   "$RESOURCES/bin/node" 2>/dev/null || true
 
 # Sign native .node addons
@@ -126,11 +127,10 @@ find "$RESOURCES/node_modules" -name "*.node" -exec codesign --force --sign "$ID
 codesign --force --sign "$IDENTITY" --preserve-metadata=entitlements \
   "$APP/Contents/PlugIns/SatMouse Extension.appex" 2>/dev/null || true
 
-# Re-sign the parent .app last (preserving its entitlements)
-codesign --force --sign "$IDENTITY" --preserve-metadata=entitlements \
+# Re-sign the parent .app last (with explicit entitlements since resources changed)
+codesign --force --sign "$IDENTITY" \
+  --entitlements "$APP_ENTITLEMENTS" \
   "$APP" 2>/dev/null || true
-
-rm -f /tmp/satmouse-app.entitlements
 
 # Verify
 echo "Verifying..."
