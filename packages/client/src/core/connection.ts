@@ -93,14 +93,15 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
 
     if (!wtUrl && !wsUrl) {
       const tdUrl = this.options.tdUrl;
-      // Use 127.0.0.1 (not localhost) — Safari treats the loopback IP as a
+      // Use 127.0.0.1 (not localhost) — browsers treat the loopback IP as a
       // "Potentially Trustworthy Origin" more reliably than the hostname.
-      // Try HTTPS first (works from HTTPS pages), fall back to HTTP.
+      // Try HTTP first (Chrome allows PNA preflight to localhost),
+      // then HTTPS (self-signed cert, may fail).
       const tdUrls = tdUrl
         ? [tdUrl]
         : [
-            "https://127.0.0.1:18947/td.json",
             "http://127.0.0.1:18945/td.json",
+            "https://127.0.0.1:18947/td.json",
           ];
 
       let resolved = false;
@@ -120,12 +121,9 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
       }
       if (!resolved) {
         this.emit("error", new Error("Failed to fetch Thing Description"));
-        // On HTTPS pages, ws:// is blocked as mixed content.
-        // Try wss:// on the HTTPS port; fall back to ws:// for HTTP pages.
-        const isSecurePage = typeof globalThis.location !== "undefined" && globalThis.location.protocol === "https:";
-        wsUrl = isSecurePage
-          ? "wss://127.0.0.1:18947/spatial"
-          : "ws://127.0.0.1:18945/spatial";
+        // Last-resort WebSocket URL. Chrome allows ws://127.0.0.1 from HTTPS
+        // pages via PNA preflight. Safari blocks it (extension handles that).
+        wsUrl = "ws://127.0.0.1:18945/spatial";
       }
     }
 
