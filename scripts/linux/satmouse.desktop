@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=SatMouse
+GenericName=Spatial Input Bridge
+Comment=6DOF spatial input bridge for SpaceMouse and other devices
+Exec=xdg-open http://127.0.0.1:18945/client/
+Icon=satmouse
+Terminal=false
+Categories=Utility;HardwareSettings;
+Keywords=spacemouse;3d;6dof;spatial;input;
+StartupNotify=false
