@@ -138,6 +138,7 @@ jobs:
           cp dist/main.js dist/main.cjs
           cp assets/icons/SatMouse.svg dist/SatMouse.svg
           cp -R src/devices/plugins/hid/profiles dist/profiles
+          mkdir -p dist/node_modules
           cp -R node_modules/koffi dist/node_modules/koffi
           cp scripts/linux/satmouse.service dist/satmouse.service
           cp scripts/linux/satmouse.desktop dist/satmouse.desktop
