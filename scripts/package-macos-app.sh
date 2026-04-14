@@ -23,6 +23,15 @@ if [ -f "src/extension/safari/manifest.json" ]; then
   [ -f "$EXT_RES" ] && cp src/extension/safari/manifest.json "$EXT_RES"
 fi
 
+# Update Xcode app version to match package.json
+XCODE_PLIST="src/extension/xcode/SatMouse/SatMouse/Info.plist"
+if [ -f "$XCODE_PLIST" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $PKG_VERSION" "$XCODE_PLIST" 2>/dev/null || \
+    /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $PKG_VERSION" "$XCODE_PLIST"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $PKG_VERSION" "$XCODE_PLIST" 2>/dev/null || \
+    /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $PKG_VERSION" "$XCODE_PLIST"
+fi
+
 # Step 1: Get Node.js binary
 if [ -n "${1:-}" ]; then
   NODE_BIN="$1"
