@@ -1,4 +1,5 @@
 import { onManager } from "./registry.js";
+import { t } from "./locale.js";
 import type { InputManager } from "../utils/input-manager.js";
 import type { SpatialData, ConnectionState, TransportProtocol } from "../core/types.js";
 
@@ -10,7 +11,7 @@ const TEMPLATE = `
   .value { color: #3498db; text-align: right; min-width: 50px; }
   .meta { color: #7f8c8d; font-size: 11px; padding: 2px 0; }
 </style>
-<div class="meta"><span class="state">Disconnected</span> · <span class="protocol"></span> · <span class="fps">0</span> fps</div>
+<div class="meta"><span class="state"></span> · <span class="protocol"></span> · <span class="fps">0</span> <span class="fps-label"></span></div>
 <div class="row"><span class="label">TX</span><span class="value" id="tx">0</span></div>
 <div class="row"><span class="label">TY</span><span class="value" id="ty">0</span></div>
 <div class="row"><span class="label">TZ</span><span class="value" id="tz">0</span></div>
@@ -51,6 +52,8 @@ export class SatMouseDebug extends HTMLElement {
     this.els.state = shadow.querySelector(".state")!;
     this.els.protocol = shadow.querySelector(".protocol")!;
     this.els.fps = shadow.querySelector(".fps")!;
+    this.els.state.textContent = t("disconnected");
+    shadow.querySelector(".fps-label")!.textContent = t("fps");
   }
 
   connectedCallback() {

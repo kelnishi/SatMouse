@@ -1,4 +1,5 @@
 import { onManager } from "./registry.js";
+import { t } from "./locale.js";
 import type { InputManager } from "../utils/input-manager.js";
 import type { ConnectionState, TransportProtocol } from "../core/types.js";
 
@@ -16,9 +17,9 @@ const TEMPLATE = `
 
 </style>
 <span class="dot"></span>
-<span class="text">Disconnected</span>
+<span class="text"></span>
 <span class="protocol"></span>
-<button class="launch">Launch SatMouse</button>
+<button class="launch"></button>
 `;
 
 export class SatMouseStatus extends HTMLElement {
@@ -40,6 +41,8 @@ export class SatMouseStatus extends HTMLElement {
     this.text = shadow.querySelector(".text")!;
     this.proto = shadow.querySelector(".protocol")!;
     this.launch = shadow.querySelector(".launch")!;
+    this.text.textContent = t("disconnected");
+    this.launch.textContent = t("launchSatMouse");
 
     this.launch.addEventListener("click", () => {
       this.startLaunchFlow();
@@ -51,7 +54,7 @@ export class SatMouseStatus extends HTMLElement {
     // Reset button state on remount
     this.stopPoll();
     this.launch.disabled = false;
-    this.launch.textContent = "Launch SatMouse";
+    this.launch.textContent = t("launchSatMouse");
   }
 
   disconnectedCallback() {
@@ -79,31 +82,31 @@ export class SatMouseStatus extends HTMLElement {
     if (state === "connected") {
       this.stopPoll();
       this.showDownload = false;
-      this.text.textContent = "Connected";
+      this.text.textContent = t("connected");
       this.launch.style.display = "none";
     } else if (state === "connecting") {
-      this.text.textContent = "Connecting...";
+      this.text.textContent = t("connecting");
       this.launch.style.display = "none";
     } else if (state === "failed") {
       // Detect Safari without extension — suggest enabling it
       const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
       const hasExtension = !!(globalThis as any).__satmouseExtensionAvailable;
       if (isSafari && !hasExtension) {
-        this.text.textContent = "Extension required";
+        this.text.textContent = t("extensionRequired");
         this.launch.style.display = "inline-block";
         this.launch.disabled = false;
-        this.launch.textContent = "Enable Extension";
+        this.launch.textContent = t("enableExtension");
         this.showDownload = false;
         this.needsExtension = true;
       } else {
-        this.text.textContent = "Not running";
+        this.text.textContent = t("notRunning");
         this.launch.style.display = "inline-block";
         this.launch.disabled = false;
-        this.launch.textContent = this.showDownload ? "Download SatMouse" : "Launch SatMouse";
+        this.launch.textContent = this.showDownload ? t("downloadSatMouse") : t("launchSatMouse");
         this.needsExtension = false;
       }
     } else {
-      this.text.textContent = "Disconnected";
+      this.text.textContent = t("disconnected");
       this.launch.style.display = "none";
     }
   }
@@ -116,7 +119,7 @@ export class SatMouseStatus extends HTMLElement {
       // Open Safari extension preferences via the bridge's URL scheme
       window.location.href = "satmouse://enable-extension";
       // Retry connection after user enables the extension
-      this.launch.textContent = "Connecting...";
+      this.launch.textContent = t("connecting");
       this.launch.disabled = true;
       this.stopPoll();
       this.pollTimer = setInterval(() => {
@@ -124,7 +127,7 @@ export class SatMouseStatus extends HTMLElement {
         this.manager?.retry();
       }, 2000);
       // Give up after 30s
-      setTimeout(() => { this.stopPoll(); this.launch.disabled = false; this.launch.textContent = "Enable Extension"; }, 30000);
+      setTimeout(() => { this.stopPoll(); this.launch.disabled = false; this.launch.textContent = t("enableExtension"); }, 30000);
       return;
     }
 
@@ -133,7 +136,7 @@ export class SatMouseStatus extends HTMLElement {
       return;
     }
 
-    this.launch.textContent = "Connecting...";
+    this.launch.textContent = t("connecting");
     this.launch.disabled = true;
 
     this.manager?.retry();
@@ -152,7 +155,7 @@ export class SatMouseStatus extends HTMLElement {
         this.stopPoll();
         this.showDownload = true;
         this.launch.disabled = false;
-        this.launch.textContent = "Download SatMouse";
+        this.launch.textContent = t("downloadSatMouse");
         return;
       }
       this.manager?.retry();
