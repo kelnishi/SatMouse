@@ -93,7 +93,8 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
   }
 
   getDeviceConfig(deviceId: string): DeviceConfig {
-    const resolved = resolveDeviceConfig(this._config, deviceId);
+    const device = this.knownDevices.get(deviceId);
+    const resolved = resolveDeviceConfig(this._config, deviceId, device?.deviceClass);
     return {
       routes: resolved.routes,
       buttonRoutes: resolved.buttonRoutes,
@@ -215,7 +216,8 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
 
   /** Per-device: deadZone → dominant → routes (flip + scale + remap in one pass) */
   private processPerDevice(raw: SpatialData, deviceId: string): SpatialData {
-    const cfg = resolveDeviceConfig(this._config, deviceId);
+    const device = this.knownDevices.get(deviceId);
+    const cfg = resolveDeviceConfig(this._config, deviceId, device?.deviceClass);
     let data = raw;
 
     // Dead zone
@@ -247,31 +249,36 @@ export class InputManager extends TypedEmitter<InputManagerEvents> {
     }
 
     // Routes: flip + scale + remap in one pass
-    // Use device-specific routes if configured, otherwise build from device axes metadata
-    const device = this.knownDevices.get(deviceId);
     const deviceRoutes = this.resolveRoutes(deviceId, device);
     data = applyRoutes(data, deviceRoutes, cfg.translateScale, cfg.rotateScale, cfg.wScale);
 
     return data;
   }
 
-  /** Get the effective routes for a device: device config override > device axes metadata > global default */
+  /** Get the effective routes for a device:
+   *  device ID override > pattern match > deviceClass > device axes metadata > global default */
   private resolveRoutes(deviceId: string, device?: DeviceInfo): AxisRoute[] {
-    // Check for explicit device config (exact match or pattern)
+    // 1. Exact device ID config
     const devCfg = this._config.devices[deviceId];
     if (devCfg?.routes && Array.isArray(devCfg.routes)) return devCfg.routes;
 
-    // Check pattern matches
+    // 2. Pattern match (e.g., "hid-54c-*")
     for (const [pattern, cfg] of Object.entries(this._config.devices)) {
       if (pattern.endsWith("*") && deviceId.startsWith(pattern.slice(0, -1))) {
         if (cfg.routes && Array.isArray(cfg.routes)) return cfg.routes;
       }
     }
 
-    // Build from device axes metadata
+    // 3. DeviceClass defaults (e.g., "spacemouse", "gamepad")
+    if (device?.deviceClass) {
+      const classCfg = this._config.deviceClasses[device.deviceClass];
+      if (classCfg?.routes && Array.isArray(classCfg.routes)) return classCfg.routes;
+    }
+
+    // 4. Build from device axes metadata
     if (device?.axes) return buildRoutes(device.axes);
 
-    // Global fallback
+    // 5. Global fallback
     return DEFAULT_ROUTES;
   }
 
