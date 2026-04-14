@@ -247,133 +247,57 @@ var WebSocketAdapter = class {
   }
 };
 
-// packages/client/src/core/transports/webrtc.ts
-var WebRTCAdapter = class {
-  protocol = "webrtc";
+// packages/client/src/core/transports/extension.ts
+var ExtensionAdapter = class {
+  protocol = "extension";
   onSpatialData = null;
   onButtonEvent = null;
   onDeviceStatus = null;
   onClose = null;
   onError = null;
-  pc = null;
-  signalingUrl;
-  constructor(signalingUrl) {
-    this.signalingUrl = signalingUrl;
+  messageHandler = null;
+  static isAvailable() {
+    return !!globalThis.__satmouseExtensionAvailable;
   }
   async connect() {
-    if (typeof globalThis.RTCPeerConnection === "undefined") {
-      throw new Error("RTCPeerConnection not available");
+    if (typeof globalThis.postMessage !== "function") {
+      throw new Error("postMessage not available");
     }
-    this.pc = new RTCPeerConnection({ iceServers: [] });
-    this.pc.ondatachannel = (event) => {
-      const channel = event.channel;
-      if (channel.label === "spatial") {
-        channel.binaryType = "arraybuffer";
-        channel.onmessage = (e) => {
-          if (e.data instanceof ArrayBuffer && e.data.byteLength >= 20) {
-            this.onSpatialData?.(decodeBinaryFrame(e.data));
-          }
-        };
-      } else if (channel.label === "reliable") {
-        channel.onmessage = (e) => {
-          try {
-            const text = typeof e.data === "string" ? e.data : new TextDecoder().decode(e.data);
-            const msg = JSON.parse(text);
-            if (msg.type === "buttonEvent") this.onButtonEvent?.(msg.data);
-            else if (msg.type === "deviceStatus") this.onDeviceStatus?.(msg.data.event, msg.data.device);
-          } catch {
-          }
-        };
-      }
-    };
-    this.pc.onconnectionstatechange = () => {
-      const state = this.pc?.connectionState;
-      if (state === "disconnected" || state === "failed" || state === "closed") {
-        this.onClose?.();
-      }
-    };
-    const offer = await this.pc.createOffer();
-    await this.pc.setLocalDescription(offer);
-    await this.waitForICE();
-    const answerSdp = await this.exchangeSDP(this.pc.localDescription.sdp);
-    await this.pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("WebRTC connection timeout")), 1e4);
-      const check = () => {
-        const state = this.pc?.connectionState;
-        if (state === "connected") {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.close();
+        reject(new Error("Extension connection timeout"));
+      }, 5e3);
+      this.messageHandler = (event) => {
+        if (event.data?.source !== "satmouse-extension") return;
+        const msg = event.data;
+        if ((msg.type === "connected" || msg.type === "bridgeConnected") && timeout) {
           clearTimeout(timeout);
           resolve();
-        } else if (state === "failed") {
-          clearTimeout(timeout);
-          reject(new Error("WebRTC connection failed"));
+        }
+        if (msg.type === "disconnected") {
+          this.onClose?.();
+        }
+        if (msg.type === "spatialData" && msg.data) {
+          this.onSpatialData?.(msg.data);
+        }
+        if (msg.type === "buttonEvent" && msg.data) {
+          this.onButtonEvent?.(msg.data);
+        }
+        if (msg.type === "deviceStatus" && msg.data) {
+          this.onDeviceStatus?.(msg.data.event, msg.data.device);
         }
       };
-      this.pc.onconnectionstatechange = () => {
-        check();
-        const state = this.pc?.connectionState;
-        if (state === "disconnected" || state === "failed" || state === "closed") this.onClose?.();
-      };
-      check();
+      globalThis.addEventListener("message", this.messageHandler);
+      globalThis.postMessage({ target: "satmouse-extension", action: "connect" }, "*");
     });
   }
   close() {
-    try {
-      this.pc?.close();
-    } catch {
+    if (this.messageHandler) {
+      globalThis.removeEventListener("message", this.messageHandler);
+      this.messageHandler = null;
     }
-    this.pc = null;
-  }
-  /** Exchange SDP: try fetch POST, fall back to popup window */
-  async exchangeSDP(offerSdp) {
-    try {
-      const res = await fetch(this.signalingUrl, {
-        method: "POST",
-        body: offerSdp,
-        headers: { "Content-Type": "application/sdp" }
-      });
-      if (res.ok) return await res.text();
-    } catch {
-    }
-    return this.exchangeSDPViaPopup(offerSdp);
-  }
-  exchangeSDPViaPopup(offerSdp) {
-    return new Promise((resolve, reject) => {
-      const offerB64 = btoa(offerSdp);
-      const baseUrl = this.signalingUrl.replace("/rtc/offer", "/rtc/connect-popup");
-      const url = `${baseUrl}?offer=${encodeURIComponent(offerB64)}`;
-      const popup = globalThis.open(url, "satmouse-rtc", "width=1,height=1,left=-100,top=-100");
-      if (!popup) {
-        reject(new Error("Popup blocked \u2014 user interaction required"));
-        return;
-      }
-      const timeout = setTimeout(() => {
-        popup.close();
-        reject(new Error("WebRTC signaling timeout"));
-      }, 1e4);
-      const onMessage = (event) => {
-        if (event.data?.type === "satmouse-rtc-answer") {
-          clearTimeout(timeout);
-          globalThis.removeEventListener("message", onMessage);
-          popup.close();
-          resolve(event.data.answer);
-        }
-      };
-      globalThis.addEventListener("message", onMessage);
-    });
-  }
-  waitForICE() {
-    return new Promise((resolve) => {
-      if (!this.pc) return resolve();
-      if (this.pc.iceGatheringState === "complete") return resolve();
-      const timeout = setTimeout(resolve, 2e3);
-      this.pc.onicegatheringstatechange = () => {
-        if (this.pc?.iceGatheringState === "complete") {
-          clearTimeout(timeout);
-          resolve();
-        }
-      };
-    });
+    globalThis.postMessage({ target: "satmouse-extension", action: "disconnect" }, "*");
   }
 };
 
@@ -390,7 +314,7 @@ function parseSatMouseUri(uri) {
   };
 }
 var DEFAULT_OPTIONS = {
-  transports: ["webtransport", "webrtc", "websocket"],
+  transports: ["webtransport", "extension", "websocket"],
   reconnectDelay: 2e3,
   maxRetries: 3,
   wsSubprotocol: "satmouse-json"
@@ -462,11 +386,10 @@ var SatMouseConnection = class extends TypedEmitter {
           continue;
         }
       }
-      if (proto === "webrtc") {
+      if (proto === "extension") {
         try {
-          if (typeof globalThis.RTCPeerConnection === "undefined") continue;
-          const rtcUrl = this.options.rtcUrl ?? `http://127.0.0.1:18945/rtc/offer`;
-          const adapter = new WebRTCAdapter(rtcUrl);
+          if (!ExtensionAdapter.isAvailable()) continue;
+          const adapter = new ExtensionAdapter();
           if (await this.tryTransport(adapter)) return;
         } catch {
           continue;
@@ -1062,17 +985,49 @@ var SatMouseStatus = class extends HTMLElement {
       this.text.textContent = "Connecting...";
       this.launch.style.display = "none";
     } else if (state === "failed") {
-      this.text.textContent = "Not running";
-      this.launch.style.display = "inline-block";
-      this.launch.disabled = false;
-      this.launch.textContent = this.showDownload ? "Download SatMouse" : "Launch SatMouse";
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      const hasExtension = !!globalThis.__satmouseExtensionAvailable;
+      if (isSafari && !hasExtension) {
+        this.text.textContent = "Extension required";
+        this.launch.style.display = "inline-block";
+        this.launch.disabled = false;
+        this.launch.textContent = "Enable Extension";
+        this.showDownload = false;
+        this.needsExtension = true;
+      } else {
+        this.text.textContent = "Not running";
+        this.launch.style.display = "inline-block";
+        this.launch.disabled = false;
+        this.launch.textContent = this.showDownload ? "Download SatMouse" : "Launch SatMouse";
+        this.needsExtension = false;
+      }
     } else {
       this.text.textContent = "Disconnected";
       this.launch.style.display = "none";
     }
   }
   showDownload = false;
+  needsExtension = false;
   startLaunchFlow() {
+    if (this.needsExtension) {
+      window.location.href = "satmouse://enable-extension";
+      this.launch.textContent = "Connecting...";
+      this.launch.disabled = true;
+      this.stopPoll();
+      this.pollTimer = setInterval(() => {
+        if (this.manager?.state === "connected") {
+          this.stopPoll();
+          return;
+        }
+        this.manager?.retry();
+      }, 2e3);
+      setTimeout(() => {
+        this.stopPoll();
+        this.launch.disabled = false;
+        this.launch.textContent = "Enable Extension";
+      }, 3e4);
+      return;
+    }
     if (this.showDownload) {
       window.location.href = "https://github.com/kelnishi/SatMouse/releases/latest";
       return;

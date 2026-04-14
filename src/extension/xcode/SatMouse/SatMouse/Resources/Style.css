@@ -1,0 +1,29 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    background: #1a1a2e; color: #e0e0e0; padding: 20px;
+    min-width: 320px; user-select: none; -webkit-user-select: none;
+}
+header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+header img { border-radius: 12px; }
+h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+.version { color: #7f8c8d; font-size: 13px; }
+section { margin-bottom: 16px; }
+h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #7f8c8d; margin-bottom: 8px; }
+.status-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #16213e; border-radius: 8px; transition: background 0.15s; }
+.status-row.clickable { cursor: pointer; }
+.status-row.clickable:hover { background: #1a4a8a; }
+.label { font-size: 13px; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.badge.on { background: #2ecc71; color: #fff; }
+.badge.off { background: #e74c3c; color: #fff; }
+.badge.checking { background: #f39c12; color: #fff; }
+#client-list { display: flex; flex-direction: column; gap: 6px; }
+.empty { color: #7f8c8d; font-size: 12px; font-style: italic; padding: 8px 12px; background: #16213e; border-radius: 8px; }
+.client-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: #16213e; border-radius: 8px; font-size: 12px; }
+.client-row .client-info { display: flex; gap: 8px; align-items: center; }
+.client-row .transport { color: #3498db; font-family: "SF Mono", monospace; font-size: 11px; }
+.client-row .ext-badge { font-size: 9px; padding: 1px 5px; border-radius: 6px; background: #2ecc71; color: #fff; font-weight: 600; }
+footer { text-align: center; padding-top: 12px; border-top: 1px solid #16213e; }
+footer a { color: #3498db; text-decoration: none; font-size: 12px; }
+footer a:hover { text-decoration: underline; }

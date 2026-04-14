@@ -162,6 +162,44 @@
       margin-top: 6px;
     }
 
+    /* Safari Extension */
+    .safari-ext {
+      padding: 20px 0 60px;
+    }
+
+    .safari-ext h2 {
+      text-align: center;
+      font-size: 28px;
+      margin-bottom: 12px;
+    }
+
+    .safari-ext > .container > p {
+      text-align: center;
+      color: var(--muted);
+      max-width: 600px;
+      margin: 0 auto 16px;
+      font-size: 15px;
+    }
+
+    .safari-ext .step-grid {
+      margin-bottom: 24px;
+    }
+
+    .safari-note {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .safari-note strong {
+      color: var(--text);
+    }
+
     /* Platforms */
     .platforms {
       padding: 20px 0 60px;
@@ -476,6 +514,40 @@
     </div>
   </section>
 
+  <section class="safari-ext">
+    <div class="container">
+      <h2>Safari Extension</h2>
+      <p>Modern browsers enforce <strong>Private Network Access</strong> rules that block HTTPS pages from connecting to localhost services. Chrome and Firefox show a permission prompt, but Safari blocks these requests silently — no prompt, no fallback.</p>
+      <p>The SatMouse macOS app includes a Safari Web Extension that bypasses this restriction entirely. The extension runs inside Safari's process and relays device data directly to web pages, with no network requests to localhost.</p>
+      <div class="step-grid">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div>
+            <h3>Install SatMouse.app</h3>
+            <p>The Safari extension is bundled inside the macOS app. No separate install needed.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div>
+            <h3>Enable the Extension</h3>
+            <p>Open Safari Settings &rarr; Extensions &rarr; enable <strong>SatMouse</strong>. Or click "Enable Extension" in the status widget — it opens the settings for you.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div>
+            <h3>Allow on Websites</h3>
+            <p>Grant permission for the sites you use. The extension only relays device data — it cannot read page content or modify requests.</p>
+          </div>
+        </div>
+      </div>
+      <div class="safari-note">
+        <strong>Why is this needed?</strong> Safari's Local Network Access policy (2025+) blocks all programmatic requests from HTTPS pages to local services — including WebSocket, fetch, and WebTransport. Unlike Chrome, Safari provides no user prompt to allow the connection. A browser extension is the only reliable workaround, as extensions communicate via IPC rather than network requests.
+      </div>
+    </div>
+  </section>
+
   <section class="platforms">
     <div class="container">
       <h2>Platforms</h2>
@@ -616,9 +688,9 @@
 
   <script type="module">
     // Live demo — connects to SatMouse bridge on localhost if running
-    import { SatMouseConnection } from "https://unpkg.com/@kelnishi/satmouse-client/dist/core/index.js";
-    import { InputManager } from "https://unpkg.com/@kelnishi/satmouse-client/dist/utils/index.js";
-    import { registerSatMouse } from "https://unpkg.com/@kelnishi/satmouse-client/dist/elements/index.js";
+    import { SatMouseConnection } from "https://unpkg.com/@kelnishi/satmouse-client@0.16.0/dist/core/index.js";
+    import { InputManager } from "https://unpkg.com/@kelnishi/satmouse-client@0.16.0/dist/utils/index.js";
+    import { registerSatMouse } from "https://unpkg.com/@kelnishi/satmouse-client@0.16.0/dist/elements/index.js";
 
     // Check if we're returning from a negotiate callback
     const params = new URLSearchParams(globalThis.location.search);

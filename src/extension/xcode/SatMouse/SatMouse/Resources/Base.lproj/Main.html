@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src ws://127.0.0.1:*;">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" href="../Style.css">
+    <script src="../Script.js" defer></script>
+</head>
+<body>
+    <header>
+        <img src="../Icon.png" width="64" height="64" alt="SatMouse">
+        <div class="title-block">
+            <h1>SatMouse</h1>
+            <p class="version" id="version">v0.0.0</p>
+        </div>
+    </header>
+
+    <section id="extension-status">
+        <div class="status-row clickable" id="ext-row">
+            <span class="label">Safari Extension</span>
+            <span class="badge" id="ext-badge">Checking...</span>
+        </div>
+    </section>
+
+    <section id="devices">
+        <h2>Devices</h2>
+        <div id="device-list">
+            <p class="empty">No devices connected</p>
+        </div>
+    </section>
+
+    <section id="clients">
+        <h2>Connected Clients</h2>
+        <div id="client-list">
+            <p class="empty">No clients connected</p>
+        </div>
+    </section>
+
+    <footer>
+        <a href="#" id="project-link">kelnishi.github.io/SatMouse</a>
+    </footer>
+</body>
+</html>

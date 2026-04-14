@@ -1,175 +1,145 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Creates SatMouse.app bundle from the SEA binary in dist/
-# Usage: ./scripts/package-macos-app.sh [binary_path]
-
-NODE_BIN="${1:-$(command -v node)}"
+NODE_VERSION="22.16.0"
+XCODE_PROJECT="src/extension/xcode/SatMouse/SatMouse.xcodeproj"
 APP="dist/SatMouse.app"
-BUNDLE_ID="com.kelnishi.SatMouse"
-VERSION="${SATMOUSE_VERSION:-0.1.0}"
 
 echo "=== Packaging SatMouse.app ==="
 
+# Sync version from package.json into extension manifest + Xcode Info.plist
+PKG_VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf-8')).version)")
+echo "  Version: $PKG_VERSION"
+
+# Update extension manifest version
+if [ -f "src/extension/safari/manifest.json" ]; then
+  node -e "
+    const m = JSON.parse(require('fs').readFileSync('src/extension/safari/manifest.json','utf-8'));
+    m.version = '$PKG_VERSION';
+    require('fs').writeFileSync('src/extension/safari/manifest.json', JSON.stringify(m, null, 2) + '\n');
+  "
+  # Also update in the Xcode project copy
+  EXT_RES="src/extension/xcode/SatMouse/SatMouse Extension/Resources/manifest.json"
+  [ -f "$EXT_RES" ] && cp src/extension/safari/manifest.json "$EXT_RES"
+fi
+
+# Update Xcode app version to match package.json
+XCODE_PLIST="src/extension/xcode/SatMouse/SatMouse/Info.plist"
+if [ -f "$XCODE_PLIST" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $PKG_VERSION" "$XCODE_PLIST" 2>/dev/null || \
+    /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $PKG_VERSION" "$XCODE_PLIST"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $PKG_VERSION" "$XCODE_PLIST" 2>/dev/null || \
+    /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $PKG_VERSION" "$XCODE_PLIST"
+fi
+
+# Step 1: Get Node.js binary
+if [ -n "${1:-}" ]; then
+  NODE_BIN="$1"
+elif [ -f "dist/node-official" ]; then
+  NODE_BIN="dist/node-official"
+else
+  echo "Downloading official Node.js $NODE_VERSION..."
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    arm64|aarch64) NODE_ARCH="arm64" ;;
+    x86_64|x64)    NODE_ARCH="x64" ;;
+    *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+  esac
+  mkdir -p dist
+  curl -sL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-darwin-${NODE_ARCH}.tar.gz" \
+    | tar xz --strip-components=2 -C dist/ "node-v${NODE_VERSION}-darwin-${NODE_ARCH}/bin/node"
+  mv dist/node dist/node-official
+  NODE_BIN="dist/node-official"
+fi
+
+# Step 2: Build Swift app + extension via Xcode
+echo "Building with Xcode..."
+TEAM_ID="${APPLE_TEAM_ID:-QVJ72LNVSK}"
+
+# Clean previous build
+rm -rf src/extension/xcode/build
+
+xcodebuild -project "$XCODE_PROJECT" \
+  -scheme "SatMouse" -configuration Release \
+  -derivedDataPath src/extension/xcode/build \
+  DEVELOPMENT_TEAM="$TEAM_ID" \
+  CODE_SIGN_STYLE="Automatic" \
+  -quiet 2>&1 || { echo "Xcode build failed"; exit 1; }
+
+# Step 3: Copy Xcode output
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
-mkdir -p "$APP/Contents/Resources"
+cp -R "src/extension/xcode/build/Build/Products/Release/SatMouse.app" "$APP"
+RESOURCES="$APP/Contents/Resources"
 
-# Node binary in two locations:
-# - MacOS/node: runs the tray wrapper (AppKit, owns the menu bar icon)
-# - Resources/bin/node: runs the server child (3Dconnexion, transports)
-cp "$NODE_BIN" "$APP/Contents/MacOS/node"
-chmod +x "$APP/Contents/MacOS/node"
+# Step 4: Add Node + resources
+echo "Adding resources..."
+mkdir -p "$RESOURCES/bin"
+cp "$NODE_BIN" "$RESOURCES/bin/node"
+chmod +x "$RESOURCES/bin/node"
 
-mkdir -p "$APP/Contents/Resources/bin"
-cp "$NODE_BIN" "$APP/Contents/Resources/bin/node"
-chmod +x "$APP/Contents/Resources/bin/node"
+cp dist/main.js "$RESOURCES/main.cjs"
+cp -R src/devices/plugins/hid/profiles "$RESOURCES/profiles"
+[ -f "assets/icons/SatMouse.icns" ] && cp assets/icons/SatMouse.icns "$RESOURCES/SatMouse.icns"
+cp package.json "$RESOURCES/"
 
-# Copy bundled JS files
-cp dist/main.js "$APP/Contents/Resources/main.cjs"
-cp dist/tray-wrapper.cjs "$APP/Contents/Resources/tray-wrapper.cjs"
+mkdir -p "$RESOURCES/node_modules"
+[ -d "node_modules/koffi" ] && cp -R node_modules/koffi "$RESOURCES/node_modules/"
+[ -d "node_modules/@fails-components" ] && { mkdir -p "$RESOURCES/node_modules/@fails-components"; cp -R node_modules/@fails-components "$RESOURCES/node_modules/"; }
+[ -d "node_modules/node-hid" ] && cp -R node_modules/node-hid "$RESOURCES/node_modules/"
 
-# Copy HID device profiles
-cp -R src/devices/plugins/hid/profiles "$APP/Contents/Resources/profiles"
+mkdir -p "$RESOURCES/client"
+cp client/index.html client/style.css client/main.js "$RESOURCES/client/" 2>/dev/null || true
+[ -d "specs" ] && cp -R specs "$RESOURCES/specs"
 
-# Copy app icon (.icns — macOS requires this format at runtime)
-if [ -f "assets/icons/SatMouse.icns" ]; then
-  cp assets/icons/SatMouse.icns "$APP/Contents/Resources/SatMouse.icns"
+if [ -f "src/extension/native-messaging-host.js" ]; then
+  npx esbuild src/extension/native-messaging-host.js \
+    --bundle --platform=node --format=cjs \
+    --external:bufferutil --external:utf-8-validate \
+    --outfile="$RESOURCES/native-messaging-host.cjs" 2>/dev/null
+  printf '#!/bin/bash\nDIR="$(cd "$(dirname "$0")" && pwd)"\nexec "$DIR/bin/node" "$DIR/native-messaging-host.cjs"\n' > "$RESOURCES/native-messaging-host"
+  chmod +x "$RESOURCES/native-messaging-host"
+  cp src/extension/com.kelnishi.SatMouse.json "$RESOURCES/" 2>/dev/null || true
 fi
 
-# Compile a native launcher (CFBundleExecutable).
-# Fork-based: parent stays alive as the macOS-tracked process (for window
-# server identity and menu bar icon), child execs node with tray-wrapper.
-# Direct execv doesn't work — macOS loses the GUI association after exec.
-cat > /tmp/satmouse_launcher.c << 'CSRC'
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <stdio.h>
-#include <signal.h>
-#include <sys/wait.h>
-#include <mach-o/dyld.h>
+# Step 5: Re-sign everything with the SAME identity Xcode used
+echo "Re-signing..."
 
-static pid_t child_pid = 0;
-void handle_signal(int sig) { if (child_pid > 0) kill(child_pid, sig); }
-
-int main(int argc, char *argv[]) {
-    char exe[4096];
-    uint32_t size = sizeof(exe);
-    _NSGetExecutablePath(exe, &size);
-    char resolved[4096];
-    realpath(exe, resolved);
-    char *last_slash = strrchr(resolved, '/');
-    if (last_slash) *last_slash = '\0';
-
-    char node_path[4096], script_path[4096];
-    snprintf(node_path, sizeof(node_path), "%s/node", resolved);
-    snprintf(script_path, sizeof(script_path), "%s/../Resources/tray-wrapper.cjs", resolved);
-
-    child_pid = fork();
-    if (child_pid == 0) {
-        char *new_argv[] = { node_path, script_path, NULL };
-        execv(node_path, new_argv);
-        perror("execv");
-        return 1;
-    }
-
-    signal(SIGTERM, handle_signal);
-    signal(SIGINT, handle_signal);
-    int status;
-    waitpid(child_pid, &status, 0);
-    return WEXITSTATUS(status);
-}
-CSRC
-cc -o "$APP/Contents/MacOS/satmouse" /tmp/satmouse_launcher.c -O2
-rm /tmp/satmouse_launcher.c
-
-# Copy native addon node_modules into Resources
-if [ -d "node_modules/koffi" ]; then
-  echo "Bundling koffi native addon..."
-  mkdir -p "$APP/Contents/Resources/node_modules"
-  cp -R node_modules/koffi "$APP/Contents/Resources/node_modules/"
-  # Remove non-darwin platform binaries to reduce size
-  find "$APP/Contents/Resources/node_modules/koffi/build" -type d \
-    ! -name "darwin_arm64" ! -name "darwin_x64" ! -name "koffi" ! -name "build" \
-    -mindepth 2 -exec rm -rf {} + 2>/dev/null || true
+# Get the signing identity from the Xcode-built main binary
+IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | grep "Apple Development" | head -1 | awk '{print $2}')
+if [ -z "$IDENTITY" ]; then
+  echo "  Warning: No signing identity found, using ad-hoc"
+  IDENTITY="-"
 fi
 
-if [ -d "node_modules/@fails-components" ]; then
-  echo "Bundling @fails-components native addons..."
-  mkdir -p "$APP/Contents/Resources/node_modules/@fails-components"
-  cp -R node_modules/@fails-components "$APP/Contents/Resources/node_modules/"
-fi
-if [ -d "node_modules/node-hid" ]; then
-  echo "Bundling node-hid native addon..."
-  cp -R node_modules/node-hid "$APP/Contents/Resources/node_modules/"
-fi
+# Use the Xcode entitlements file directly (extraction from signed binary
+# produces binary plist with FADE7171 header that codesign can't re-apply)
+APP_ENTITLEMENTS="src/extension/xcode/SatMouse/SatMouse/SatMouse.entitlements"
 
-# Copy package.json for version info
-cp package.json "$APP/Contents/Resources/"
+# Sign Node binary with app entitlements (needs USB, network, bluetooth)
+codesign --force --sign "$IDENTITY" \
+  --entitlements "$APP_ENTITLEMENTS" \
+  "$RESOURCES/bin/node" 2>/dev/null || true
 
-# Copy specs and client for the built-in web server
-if [ -d "specs" ]; then
-  cp -R specs "$APP/Contents/Resources/"
-fi
-if [ -d "client" ]; then
-  mkdir -p "$APP/Contents/Resources/client"
-  cp client/index.html client/style.css client/main.js "$APP/Contents/Resources/client/" 2>/dev/null || true
-fi
+# Sign native .node addons
+find "$RESOURCES/node_modules" -name "*.node" -exec codesign --force --sign "$IDENTITY" {} \; 2>/dev/null || true
 
-# Info.plist
-cat > "$APP/Contents/Info.plist" << PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>satmouse</string>
-    <key>CFBundleIconFile</key>
-    <string>SatMouse</string>
-    <key>CFBundleIdentifier</key>
-    <string>${BUNDLE_ID}</string>
-    <key>CFBundleName</key>
-    <string>SatMouse</string>
-    <key>CFBundleDisplayName</key>
-    <string>SatMouse</string>
-    <key>CFBundleVersion</key>
-    <string>${VERSION}</string>
-    <key>CFBundleShortVersionString</key>
-    <string>${VERSION}</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleURLName</key>
-            <string>SatMouse URL Scheme</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>satmouse</string>
-            </array>
-        </dict>
-    </array>
-</dict>
-</plist>
-PLIST
+# Re-sign the .appex (preserving its entitlements)
+codesign --force --sign "$IDENTITY" --preserve-metadata=entitlements \
+  "$APP/Contents/PlugIns/SatMouse Extension.appex" 2>/dev/null || true
 
-# PkgInfo
-echo -n "APPL????" > "$APP/Contents/PkgInfo"
+# Re-sign the parent .app last (with explicit entitlements since resources changed)
+codesign --force --sign "$IDENTITY" \
+  --entitlements "$APP_ENTITLEMENTS" \
+  "$APP" 2>/dev/null || true
 
-# Register with Launch Services (registers satmouse:// URL scheme)
+# Verify
+echo "Verifying..."
+codesign --verify --deep "$APP" 2>&1 && echo "  Signature valid" || echo "  WARNING: Signature invalid"
+
+# Clean Xcode build artifacts (prevents Safari from picking up stale extensions)
+rm -rf src/extension/xcode/build ~/Library/Developer/Xcode/DerivedData/SatMouse-*
+
+# Register with Launch Services
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" 2>/dev/null || true
 
 echo "=== Created $APP ==="
-echo "  Binary:   $APP/Contents/MacOS/satmouse"
-echo "  Addons:   $APP/Contents/Resources/node_modules/"
-echo "  LSUIElement: true (menu bar only, no dock icon)"
-echo "  URL scheme: satmouse://"

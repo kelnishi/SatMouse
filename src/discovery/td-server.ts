@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { networkInterfaces } from "node:os";
 import type { SatMouseConfig } from "../config.js";
 import type { DeviceManager } from "../devices/manager.js";
-import type { WebRTCServer } from "../transport/webrtc.js";
 import { resolveResource, isPathWithin } from "../resources.js";
 
 /**
@@ -25,12 +24,9 @@ export class TDServer {
   private config: SatMouseConfig;
   private deviceManager: DeviceManager;
   private certHashBase64: string | null = null;
-  private _webrtc: WebRTCServer | null = null;
 
-  /** Set the WebRTC server for signaling (called after transport manager starts) */
-  set webrtcServer(rtc: WebRTCServer) {
-    this._webrtc = rtc;
-  }
+  /** Called to get current connected client info for /api/status */
+  getClients: (() => Array<{ transport: string; subprotocol?: string }>) | null = null;
 
   constructor(config: SatMouseConfig, deviceManager: DeviceManager) {
     this.config = config;
@@ -116,6 +112,35 @@ export class TDServer {
     res.setHeader("Vary", "Origin");
   }
 
+  /** Read request body with size limit. Rejects if body exceeds maxBytes. */
+  private readBody(req: IncomingMessage, maxBytes: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      let body = "";
+      let size = 0;
+      req.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > maxBytes) {
+          req.destroy();
+          reject(new Error(`Request body too large (>${maxBytes} bytes)`));
+          return;
+        }
+        body += chunk.toString();
+      });
+      req.on("end", () => resolve(body));
+      req.on("error", reject);
+    });
+  }
+
+  /** Validate that a string is a valid HTTP/HTTPS URL (no javascript:, data:, etc.) */
+  private isValidOrigin(origin: string): boolean {
+    try {
+      const url = new URL(origin);
+      return url.protocol === "https:" || url.protocol === "http:";
+    } catch {
+      return false;
+    }
+  }
+
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
     const url = req.url ?? "/";
     this.setCORS(req, res);
@@ -128,18 +153,23 @@ export class TDServer {
     }
 
     if (url === "/health") {
+      let version = process.env.npm_package_version ?? "unknown";
+      if (version === "unknown") {
+        try {
+          const pkg = JSON.parse(readFileSync(resolveResource("package.json"), "utf-8"));
+          version = pkg.version ?? "unknown";
+        } catch {}
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true, version: process.env.npm_package_version ?? "unknown" }));
+      res.end(JSON.stringify({ ok: true, version }));
     } else if (url === "/td.json") {
       this.serveTD(req, res);
     } else if (url.startsWith("/negotiate")) {
       this.serveNegotiate(req, res);
-    } else if (url === "/rtc/offer" && req.method === "POST") {
-      this.serveRTCOffer(req, res);
-    } else if (url.startsWith("/rtc/connect-popup")) {
-      this.serveRTCConnectPopup(req, res);
-    } else if (url.startsWith("/rtc/connect")) {
-      this.serveRTCConnect(req, res);
+    } else if (url === "/api/status") {
+      const clients = this.getClients?.() ?? [];
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ clients }));
     } else if (url === "/api/device") {
       this.serveDeviceInfo(res);
     } else if (url.startsWith("/client")) {
@@ -217,9 +247,9 @@ export class TDServer {
     const callback = parsed.searchParams.get("callback") ?? "/satmouse-handshake";
     const challenge = parsed.searchParams.get("challenge") ?? "";
 
-    if (!origin) {
+    if (!origin || !this.isValidOrigin(origin)) {
       res.writeHead(400, { "Content-Type": "text/plain" });
-      res.end("Missing origin parameter");
+      res.end("Missing or invalid origin parameter");
       return;
     }
 
@@ -242,109 +272,6 @@ export class TDServer {
    * POST /rtc/offer — Direct SDP signaling for browsers that can POST to localhost.
    * Body: SDP offer string. Response: SDP answer string.
    */
-  private serveRTCOffer(req: IncomingMessage, res: ServerResponse): void {
-    if (!this._webrtc) {
-      res.writeHead(503, { "Content-Type": "text/plain" });
-      res.end("WebRTC not available");
-      return;
-    }
-
-    let body = "";
-    req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
-    req.on("end", async () => {
-      try {
-        const answer = await this._webrtc!.handleOffer(body);
-        res.writeHead(200, { "Content-Type": "application/sdp" });
-        res.end(answer);
-      } catch (err) {
-        console.error("[WebRTC] Failed to handle offer:", err);
-        res.writeHead(500, { "Content-Type": "text/plain" });
-        res.end("Failed to process offer");
-      }
-    });
-  }
-
-  /**
-   * GET /rtc/connect — Navigate-redirect signaling for Safari.
-   * Client navigates here with SDP offer as base64 query param.
-   * Bridge processes offer, redirects back with SDP answer.
-   *
-   * GET /rtc/connect?offer=<base64>&origin=<origin>&callback=<path>
-   * → 302 <origin><callback>?answer=<base64>
-   */
-  private serveRTCConnect(req: IncomingMessage, res: ServerResponse): void {
-    if (!this._webrtc) {
-      res.writeHead(503, { "Content-Type": "text/plain" });
-      res.end("WebRTC not available");
-      return;
-    }
-
-    const parsed = new URL(req.url ?? "/", "http://localhost");
-    const offerB64 = parsed.searchParams.get("offer");
-    const origin = parsed.searchParams.get("origin");
-    const callback = parsed.searchParams.get("callback") ?? "/";
-
-    if (!offerB64 || !origin) {
-      res.writeHead(400, { "Content-Type": "text/plain" });
-      res.end("Missing offer or origin parameter");
-      return;
-    }
-
-    const offerSdp = Buffer.from(offerB64, "base64").toString("utf-8");
-
-    this._webrtc.handleOffer(offerSdp).then((answer) => {
-      const answerB64 = Buffer.from(answer).toString("base64");
-      const redirectUrl = `${origin}${callback}?answer=${encodeURIComponent(answerB64)}`;
-      res.writeHead(302, { Location: redirectUrl });
-      res.end();
-    }).catch((err) => {
-      console.error("[WebRTC] Failed to handle offer:", err);
-      res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end("Failed to process offer");
-    });
-  }
-
-  /**
-   * GET /rtc/connect-popup — Returns HTML that processes the SDP offer
-   * and postMessages the answer back to window.opener, then closes.
-   */
-  private serveRTCConnectPopup(req: IncomingMessage, res: ServerResponse): void {
-    if (!this._webrtc) {
-      res.writeHead(503, { "Content-Type": "text/plain" });
-      res.end("WebRTC not available");
-      return;
-    }
-
-    const parsed = new URL(req.url ?? "/", "http://localhost");
-    const offerB64 = parsed.searchParams.get("offer");
-    if (!offerB64) {
-      res.writeHead(400, { "Content-Type": "text/plain" });
-      res.end("Missing offer parameter");
-      return;
-    }
-
-    const offerSdp = Buffer.from(offerB64, "base64").toString("utf-8");
-
-    this._webrtc.handleOffer(offerSdp).then((answer) => {
-      // Return HTML page that postMessages the answer back to opener and closes
-      const html = `<!DOCTYPE html><html><body><script>
-        if (window.opener) {
-          window.opener.postMessage({
-            type: "satmouse-rtc-answer",
-            answer: ${JSON.stringify(answer)}
-          }, "*");
-        }
-        window.close();
-      </script></body></html>`;
-      res.writeHead(200, { "Content-Type": "text/html" });
-      res.end(html);
-    }).catch((err) => {
-      console.error("[WebRTC] Failed to handle popup offer:", err);
-      res.writeHead(500, { "Content-Type": "text/html" });
-      res.end(`<html><body><script>window.close();</script></body></html>`);
-    });
-  }
-
   private serveDeviceInfo(res: ServerResponse): void {
     const devices = this.deviceManager.getConnectedDevices();
     res.writeHead(200, { "Content-Type": "application/json" });
