@@ -1,51 +1,48 @@
 %%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#2980b9', 'primaryTextColor': '#ecf0f1', 'primaryBorderColor': '#3498db', 'lineColor': '#5dade2', 'secondaryColor': '#16213e', 'tertiaryColor': '#0f3460', 'background': '#1a1a2e', 'mainBkg': '#16213e', 'nodeBorder': '#3498db', 'clusterBkg': '#0f3460', 'clusterBorder': '#1a4a8a', 'titleColor': '#ecf0f1', 'edgeLabelBackground': '#16213e' }}}%%
 
-graph TB
-  APP[🖥️ Your App]
-
-  subgraph client ["@kelnishi/satmouse-client · npm"]
-    direction TB
-    REACT["react<br/>Provider · hooks · components"]
-    UTILS["utils<br/>InputManager · transforms · config"]
-    CORE["core<br/>connection · discovery · decode"]
-  end
-
-  subgraph ext [Safari Web Extension · .appex]
-    direction TB
-    CS[content.js<br/>postMessage to page]
-    BG[background.js<br/>WebSocket to bridge]
-  end
-
-  subgraph bridge [SatMouse Bridge · Node SEA]
-    direction TB
-    TD[td.json · WoT Thing Description]
-    MD[mDNS · _wot._tcp]
-    WT[WebTransport · HTTP/3 QUIC]
-    WS[WebSocket · fallback]
-    TS[Transport Server]
-    PM[Plugin Manager]
-    SP[device plugins<br/>macOS · Windows · Linux]
-  end
-
+graph BT
   subgraph hw [Hardware Layer]
     SM[🎮 6DOF Spatial Input<br/>USB / Wireless]
     DIY[🔌 DIY / HID<br/>future devices]
   end
 
-  REACT --> APP
-  UTILS -->|direct use| APP
-  UTILS --> REACT
-  CORE --> UTILS
+  subgraph bridge [SatMouse Bridge · Node SEA]
+    SP[device plugins<br/>macOS · Windows · Linux]
+    PM[Plugin Manager]
+    TS[Transport Server]
+    WT[WebTransport · HTTP/3 QUIC]
+    WS[WebSocket · fallback]
+    MD[mDNS · _wot._tcp]
+    TD[td.json · WoT Thing Description]
+  end
+
+  subgraph ext [Safari Web Extension · .appex]
+    BG[background.js<br/>WebSocket to bridge]
+    CS[content.js<br/>postMessage to page]
+  end
+
+  subgraph client ["@kelnishi/satmouse-client · npm"]
+    CORE["core<br/>connection · discovery · decode"]
+    UTILS["utils<br/>InputManager · transforms · config"]
+    REACT["react<br/>Provider · hooks · components"]
+  end
+
+  APP[🖥️ Your App]
+
+  SM --> SP
+  DIY --> SP
+  SP --> PM
+  PM --> TS
+  TS --> WT
+  TS --> WS
+  WS -->|localhost| BG
+  BG --> CS
   WT -->|binary datagrams| CORE
   WS -->|JSON frames| CORE
   CS -->|postMessage| CORE
   MD -.->|discover| CORE
   TD -.->|negotiate| CORE
-  BG --> CS
-  WS -->|localhost| BG
-  TS --> WT
-  TS --> WS
-  PM --> TS
-  SP --> PM
-  SM --> SP
-  DIY --> SP
+  CORE --> UTILS
+  UTILS --> REACT
+  REACT --> APP
+  UTILS -->|direct use| APP
