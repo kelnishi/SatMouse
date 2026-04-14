@@ -29,6 +29,10 @@
       port.postMessage({ action: "subscribe" });
     }
 
+    if (event.data.action === "fetchDevices") {
+      if (port) port.postMessage({ action: "fetchDevices" });
+    }
+
     if (event.data.action === "disconnect") {
       if (port) { port.disconnect(); port = null; }
     }

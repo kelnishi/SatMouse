@@ -65,11 +65,22 @@ api.runtime.onConnect.addListener(function(port) {
   }
 
   port.onMessage.addListener(function(msg) {
-    if (msg && msg.action === "subscribe") {
+    if (!msg) return;
+    if (msg.action === "subscribe") {
       ensureWebSocket();
       if (ws && ws.readyState === WebSocket.OPEN) {
         port.postMessage({ type: "connected" });
       }
+    }
+    if (msg.action === "fetchDevices") {
+      fetch("http://127.0.0.1:18945/api/device")
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          port.postMessage({ type: "deviceList", data: data.devices || [] });
+        })
+        .catch(function() {
+          port.postMessage({ type: "deviceList", data: [] });
+        });
     }
   });
 
