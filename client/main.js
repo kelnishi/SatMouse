@@ -985,17 +985,49 @@ var SatMouseStatus = class extends HTMLElement {
       this.text.textContent = "Connecting...";
       this.launch.style.display = "none";
     } else if (state === "failed") {
-      this.text.textContent = "Not running";
-      this.launch.style.display = "inline-block";
-      this.launch.disabled = false;
-      this.launch.textContent = this.showDownload ? "Download SatMouse" : "Launch SatMouse";
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      const hasExtension = !!globalThis.__satmouseExtensionAvailable;
+      if (isSafari && !hasExtension) {
+        this.text.textContent = "Extension required";
+        this.launch.style.display = "inline-block";
+        this.launch.disabled = false;
+        this.launch.textContent = "Enable Extension";
+        this.showDownload = false;
+        this.needsExtension = true;
+      } else {
+        this.text.textContent = "Not running";
+        this.launch.style.display = "inline-block";
+        this.launch.disabled = false;
+        this.launch.textContent = this.showDownload ? "Download SatMouse" : "Launch SatMouse";
+        this.needsExtension = false;
+      }
     } else {
       this.text.textContent = "Disconnected";
       this.launch.style.display = "none";
     }
   }
   showDownload = false;
+  needsExtension = false;
   startLaunchFlow() {
+    if (this.needsExtension) {
+      window.location.href = "satmouse://enable-extension";
+      this.launch.textContent = "Connecting...";
+      this.launch.disabled = true;
+      this.stopPoll();
+      this.pollTimer = setInterval(() => {
+        if (this.manager?.state === "connected") {
+          this.stopPoll();
+          return;
+        }
+        this.manager?.retry();
+      }, 2e3);
+      setTimeout(() => {
+        this.stopPoll();
+        this.launch.disabled = false;
+        this.launch.textContent = "Enable Extension";
+      }, 3e4);
+      return;
+    }
     if (this.showDownload) {
       window.location.href = "https://github.com/kelnishi/SatMouse/releases/latest";
       return;
