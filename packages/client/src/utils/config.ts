@@ -1,4 +1,5 @@
 import { DEFAULT_ROUTES, type AxisRoute } from "./action-map.js";
+import type { DeviceClass } from "../core/types.js";
 
 /** Maps a device button to a keyboard key */
 export interface ButtonRoute {
@@ -50,6 +51,8 @@ export interface InputConfig {
   lockRotation: boolean;
   /** Per-device overrides keyed by device ID or pattern (e.g., "cnx-*") */
   devices: Record<string, DeviceConfig>;
+  /** Per-class defaults keyed by DeviceClass (e.g., "spacemouse", "gamepad") */
+  deviceClasses: Partial<Record<DeviceClass, DeviceConfig>>;
 }
 
 export const DEFAULT_CONFIG: InputConfig = {
@@ -62,8 +65,9 @@ export const DEFAULT_CONFIG: InputConfig = {
   dominant: false,
   lockPosition: false,
   lockRotation: false,
-  devices: {
-    "cnx-*": {
+  devices: {},
+  deviceClasses: {
+    spacemouse: {
       routes: [
         { source: "tx", target: "tx" },
         { source: "ty", target: "ty", flip: true },
@@ -71,17 +75,6 @@ export const DEFAULT_CONFIG: InputConfig = {
         { source: "rx", target: "rx" },
         { source: "ry", target: "ry", flip: true },
         { source: "rz", target: "rz", flip: true },
-      ],
-    },
-    // PlayStation: L2 (ty) → TY, R2 (ry) → TY flipped (push-pull)
-    "hid-54c-*": {
-      routes: [
-        { source: "tx", target: "tx" },
-        { source: "tz", target: "tz" },
-        { source: "rz", target: "rz" },
-        { source: "rx", target: "rx" },
-        { source: "ty", target: "ty" },
-        { source: "ry", target: "ty", flip: true },
       ],
     },
   },
@@ -94,6 +87,7 @@ export function mergeConfig(base: InputConfig, partial: Partial<InputConfig>): I
     routes: partial.routes ?? [...base.routes],
     buttonRoutes: partial.buttonRoutes ?? [...base.buttonRoutes],
     devices: { ...base.devices },
+    deviceClasses: { ...base.deviceClasses },
   };
 
   if (partial.devices) {
@@ -102,22 +96,36 @@ export function mergeConfig(base: InputConfig, partial: Partial<InputConfig>): I
     }
   }
 
+  if (partial.deviceClasses) {
+    for (const [key, classCfg] of Object.entries(partial.deviceClasses)) {
+      if (classCfg) merged.deviceClasses[key as DeviceClass] = { ...merged.deviceClasses[key as DeviceClass], ...classCfg };
+    }
+  }
+
   return merged;
 }
 
-/** Resolve the effective config for a specific device */
-export function resolveDeviceConfig(config: InputConfig, deviceId: string): InputConfig {
+/** Resolve the effective config for a specific device.
+ *  Priority: exact device ID → pattern match → deviceClass → global defaults */
+export function resolveDeviceConfig(config: InputConfig, deviceId: string, deviceClass?: DeviceClass): InputConfig {
   let deviceOverride: DeviceConfig | undefined;
 
+  // 1. Exact device ID match
   if (config.devices[deviceId]) {
     deviceOverride = config.devices[deviceId];
   } else {
+    // 2. Pattern match (e.g., "cnx-*")
     for (const [pattern, cfg] of Object.entries(config.devices)) {
       if (pattern.endsWith("*") && deviceId.startsWith(pattern.slice(0, -1))) {
         deviceOverride = cfg;
         break;
       }
     }
+  }
+
+  // 3. DeviceClass fallback
+  if (!deviceOverride && deviceClass && config.deviceClasses[deviceClass]) {
+    deviceOverride = config.deviceClasses[deviceClass];
   }
 
   if (!deviceOverride) return config;

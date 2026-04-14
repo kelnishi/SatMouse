@@ -73,32 +73,65 @@ function Scene() {
 <satmouse-debug></satmouse-debug>
 ```
 
-## Per-Device Configuration
+## Configuration
 
-Axis routing with per-device flip, scale, and remapping:
+### Device class defaults
+
+Set routes, scales, and behavior by device class — applies to all devices of that type:
 
 ```typescript
 const manager = new InputManager({
   translateScale: 0.001,
   rotateScale: 0.001,
-  wScale: 0.001,
-  devices: {
-    "cnx-*": {
+  deviceClasses: {
+    spacemouse: {
+      // Built-in default: flips Y/Z axes (3Dconnexion convention)
+      rotateScale: 0.0005,
+    },
+    gamepad: {
       routes: [
         { source: "tx", target: "tx" },
-        { source: "ty", target: "ty", flip: true },
-        { source: "tz", target: "tz", flip: true },
+        { source: "tz", target: "tz" },
         { source: "rx", target: "rx" },
-        { source: "ry", target: "ry", flip: true },
-        { source: "rz", target: "rz", flip: true },
+        { source: "rz", target: "rz" },
+        { source: "ty", target: "ty" },           // L2 trigger
+        { source: "ry", target: "ty", flip: true }, // R2 trigger (push-pull)
       ],
+      deadZone: 0.05,
     },
   },
 });
+```
 
-// Update per-device at runtime
+Device classes: `"spacemouse"`, `"gamepad"`, `"dial"`, `"joystick"`, `"6dof"`, `"other"`
+
+### Per-device overrides
+
+Override config for a specific device by ID or vendor pattern:
+
+```typescript
+const manager = new InputManager({
+  devices: {
+    // All PlayStation controllers (vendor 054c)
+    "hid-54c-*": { translateScale: 0.002 },
+    // A specific device by ID
+    "hid-54c-9cc-1": { dominant: true },
+  },
+});
+
+// Update at runtime
 manager.updateDeviceConfig("cnx-c635", { translateScale: 0.0005 });
 ```
+
+### Resolution order
+
+Config is resolved per-device in this priority:
+
+1. **Exact device ID** — `devices["hid-54c-9cc-1"]`
+2. **ID pattern** — `devices["hid-54c-*"]`
+3. **Device class** — `deviceClasses["gamepad"]`
+4. **Device axes metadata** — auto-generated passthrough from bridge
+5. **Global defaults** — `routes`, `translateScale`, etc.
 
 ## Button-to-Key Mapping
 

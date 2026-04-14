@@ -241,22 +241,32 @@ await connection.connect();
 import { InputManager } from "@kelnishi/satmouse-client/utils";
 
 const manager = new InputManager({
-  scale: 0.001,
+  translateScale: 0.001,
+  rotateScale: 0.001,
   deadZone: 0,
   dominant: false,
   lockPosition: false,
   lockRotation: false,
-  devices: {
-    "cnx-*": {
+
+  // Defaults by device class (spacemouse, gamepad, dial, joystick, 6dof, other)
+  deviceClasses: {
+    spacemouse: { rotateScale: 0.0005 },
+    gamepad: {
       routes: [
         { source: "tx", target: "tx" },
-        { source: "ty", target: "ty", flip: true },
-        { source: "tz", target: "tz", flip: true },
+        { source: "tz", target: "tz" },
         { source: "rx", target: "rx" },
-        { source: "ry", target: "ry", flip: true },
-        { source: "rz", target: "rz", flip: true },
+        { source: "rz", target: "rz" },
+        { source: "ty", target: "ty" },
+        { source: "ry", target: "ty", flip: true },
       ],
+      deadZone: 0.05,
     },
+  },
+
+  // Overrides by device ID or vendor pattern
+  devices: {
+    "hid-54c-*": { translateScale: 0.002 },
   },
 });
 
@@ -265,8 +275,10 @@ manager.onSpatialData((data) => { /* processed, merged, transformed */ });
 manager.onButtonEvent((event) => { /* button press/release */ });
 
 // Per-device config at runtime
-manager.updateDeviceConfig("cnx-c635", { scale: 0.0005 });
+manager.updateDeviceConfig("cnx-c635", { translateScale: 0.0005 });
 ```
+
+Config resolution per device: exact ID → ID pattern → device class → device axes metadata → global defaults.
 
 #### Web Components
 
