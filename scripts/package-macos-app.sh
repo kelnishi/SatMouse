@@ -129,8 +129,12 @@ if [ -z "$IDENTITY" ]; then
   IDENTITY="-"
 fi
 
-# Entitlements files
-APP_ENTITLEMENTS="src/extension/xcode/SatMouse/SatMouse/SatMouse.entitlements"
+# Entitlements files:
+#   entitlements.plist     — Node binary (no sandbox: JIT, unsigned-memory, network, USB)
+#   entitlements-app.plist — .app bundle (sandboxed: JIT, network, USB — for Safari extension)
+#   entitlements-extension.plist — .appex (sandboxed: network.client only)
+NODE_ENTITLEMENTS="scripts/entitlements.plist"
+APP_ENTITLEMENTS="scripts/entitlements-app.plist"
 EXT_ENTITLEMENTS="scripts/entitlements-extension.plist"
 
 # Inside-out signing: innermost first, parent bundle last.
@@ -139,9 +143,9 @@ EXT_ENTITLEMENTS="scripts/entitlements-extension.plist"
 # 1. Sign native .node addons
 find "$RESOURCES/node_modules" -name "*.node" -exec codesign --force --sign "$IDENTITY" {} \; 2>/dev/null || true
 
-# 2. Sign Node binary (needs USB, network, bluetooth, JIT)
+# 2. Sign Node binary (NOT sandboxed — needs full FS access for V8, koffi, certs)
 codesign --force --sign "$IDENTITY" \
-  --entitlements "$APP_ENTITLEMENTS" \
+  --entitlements "$NODE_ENTITLEMENTS" \
   "$RESOURCES/bin/node" 2>/dev/null || true
 
 # 3. Sign the .appex with its own entitlements (sandbox + network.client)
@@ -149,7 +153,7 @@ codesign --force --sign "$IDENTITY" \
   --entitlements "$EXT_ENTITLEMENTS" \
   "$APP/Contents/PlugIns/SatMouse Extension.appex" 2>/dev/null || true
 
-# 4. Sign the parent .app last
+# 4. Sign the parent .app last (sandboxed — required for Safari extension)
 codesign --force --sign "$IDENTITY" \
   --entitlements "$APP_ENTITLEMENTS" \
   "$APP" 2>/dev/null || true

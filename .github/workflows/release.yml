@@ -96,11 +96,11 @@ jobs:
               --timestamp --force \
               "dist/SatMouse.app/Contents/PlugIns/SatMouse Extension.appex"
 
-            # 4. Sign the parent .app bundle last (app entitlements)
+            # 4. Sign the parent .app bundle last (sandboxed — required for Safari extension)
             echo "Signing: dist/SatMouse.app"
             codesign --sign "$SIGNING_IDENTITY" \
               --options runtime \
-              --entitlements scripts/entitlements.plist \
+              --entitlements scripts/entitlements-app.plist \
               --timestamp --force \
               dist/SatMouse.app
 
