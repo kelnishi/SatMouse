@@ -70,26 +70,43 @@ jobs:
             SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)"/\1/')
             echo "Signing with: $SIGNING_IDENTITY"
 
-            # Sign only Mach-O binaries (skip non-darwin .node files and non-binary files named "node")
+            # Inside-out signing: innermost binaries first, bundles last.
+            # NEVER use --deep — it flattens entitlements across all nested code,
+            # breaking the .appex (Safari rejects extensions with wrong entitlements).
+
+            # 1. Sign native .node addons (no special entitlements)
             find dist/SatMouse.app -type f \( -name "*.node" -o -name "*.dylib" \) | while read f; do
               if file "$f" | grep -q "Mach-O"; then
                 echo "Signing: $f"
                 codesign --sign "$SIGNING_IDENTITY" --options runtime --timestamp --force "$f"
               fi
             done
-            # Sign the Node binary with entitlements (needs JIT + unsigned memory)
+
+            # 2. Sign the Node binary (needs JIT, unsigned memory, network, USB, bluetooth)
             echo "Signing: dist/SatMouse.app/Contents/Resources/bin/node"
             codesign --sign "$SIGNING_IDENTITY" --options runtime \
               --entitlements scripts/entitlements.plist \
               --timestamp --force \
               dist/SatMouse.app/Contents/Resources/bin/node
 
-            # Sign the .app bundle
+            # 3. Sign the .appex extension bundle (sandbox + network.client only)
+            echo "Signing: dist/SatMouse.app/Contents/PlugIns/SatMouse Extension.appex"
+            codesign --sign "$SIGNING_IDENTITY" --options runtime \
+              --entitlements scripts/entitlements-extension.plist \
+              --timestamp --force \
+              "dist/SatMouse.app/Contents/PlugIns/SatMouse Extension.appex"
+
+            # 4. Sign the parent .app bundle last (app entitlements)
+            echo "Signing: dist/SatMouse.app"
             codesign --sign "$SIGNING_IDENTITY" \
               --options runtime \
               --entitlements scripts/entitlements.plist \
-              --force --deep --timestamp \
+              --timestamp --force \
               dist/SatMouse.app
+
+            # Verify
+            codesign --verify --deep --strict dist/SatMouse.app
+            echo "Signature verified"
 
             cd dist && zip -r ../SatMouse-macOS-${{ matrix.arch }}.zip SatMouse.app && cd ..
 
@@ -108,7 +125,8 @@ jobs:
 
             security delete-keychain "$KEYCHAIN_PATH"
           else
-            codesign --sign - --deep dist/SatMouse.app
+            codesign --sign - --force "dist/SatMouse.app/Contents/PlugIns/SatMouse Extension.appex"
+            codesign --sign - --force dist/SatMouse.app
             cd dist && zip -r ../SatMouse-macOS-${{ matrix.arch }}.zip SatMouse.app
           fi
 
