@@ -8,6 +8,12 @@ import { existsSync, realpathSync } from "node:fs";
 function findResourcesDir(): string | null {
   const execDir = dirname(process.execPath);
 
+  // Windows/Linux: resources sit alongside node.exe / node
+  if (process.platform !== "darwin") {
+    const mainCheck = join(execDir, "main.cjs");
+    if (existsSync(mainCheck)) return execDir;
+  }
+
   // MacOS/node → Contents/Resources
   const fromMacOS = resolve(execDir, "..", "Resources");
   if (existsSync(fromMacOS)) return fromMacOS;

@@ -15,8 +15,9 @@ function makeNativeRequire(): NodeRequire {
 
   // Check multiple possible locations relative to execPath
   const candidates = [
-    join(execDir, "..", "node_modules"),             // Resources/bin/node → Resources/node_modules
-    join(execDir, "..", "Resources", "node_modules"), // MacOS/node → Resources/node_modules
+    join(execDir, "node_modules"),                    // Windows/Linux: node_modules alongside node.exe
+    join(execDir, "..", "node_modules"),               // Resources/bin/node → Resources/node_modules
+    join(execDir, "..", "Resources", "node_modules"),  // MacOS/node → Resources/node_modules
   ];
 
   for (const candidate of candidates) {
