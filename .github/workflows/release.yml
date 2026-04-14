@@ -38,6 +38,7 @@ jobs:
         run: |
           npm run build
           npm run build:tray
+          npm run build:tray-win32
           npm run build:client
 
       - name: Package macOS .app
@@ -146,9 +147,13 @@ jobs:
           Copy-Item (Get-Command node).Source "dist/node.exe"
           Copy-Item "dist/main.js" "dist/main.cjs"
           Copy-Item "assets/icons/SatMouse-Default-1024x1024@1x.png" "dist/SatMouse.png"
+          Copy-Item "assets/icons/SatMouse.ico" "dist/SatMouse.ico"
           Copy-Item -Recurse "src/devices/plugins/hid/profiles" "dist/profiles"
+          Copy-Item -Recurse "node_modules/koffi" "dist/node_modules/koffi"
+          # Create launcher script
+          Set-Content -Path "dist/SatMouse.cmd" -Value '@echo off`r`n"%~dp0node.exe" "%~dp0tray-wrapper-win32.cjs"' -NoNewline
           cd dist
-          tar czf ../satmouse-win32-${{ matrix.arch }}.tar.gz node.exe main.cjs SatMouse.png profiles
+          tar czf ../satmouse-win32-${{ matrix.arch }}.tar.gz node.exe main.cjs tray-wrapper-win32.cjs SatMouse.ico SatMouse.png SatMouse.cmd profiles node_modules
         shell: pwsh
 
       - name: Upload release asset (macOS)

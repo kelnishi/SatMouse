@@ -168,16 +168,33 @@ async function main(): Promise<void> {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  // SIGUSR1: rescan for new devices (triggered by tray "Rescan Devices" menu)
+  // Rescan triggers from tray wrapper
   if (!noDevice) {
-    process.on("SIGUSR1", async () => {
-      console.log("[DeviceManager] Rescanning devices...");
-      await deviceManager.rescan(
-        config.enabledPlugins.length ? config.enabledPlugins : undefined
-      );
-      const devices = deviceManager.getConnectedDevices();
-      console.log(`[DeviceManager] Devices: ${devices.length ? devices.map((d) => d.name).join(", ") : "(none)"}`);
-    });
+    // macOS/Linux: SIGUSR1 signal
+    if (process.platform !== "win32") {
+      process.on("SIGUSR1", async () => {
+        console.log("[DeviceManager] Rescanning devices...");
+        await deviceManager.rescan(
+          config.enabledPlugins.length ? config.enabledPlugins : undefined
+        );
+        const devices = deviceManager.getConnectedDevices();
+        console.log(`[DeviceManager] Devices: ${devices.length ? devices.map((d) => d.name).join(", ") : "(none)"}`);
+      });
+    }
+
+    // Windows: IPC messages from tray wrapper
+    if (isChildProcess && process.send) {
+      process.on("message", async (msg: any) => {
+        if (msg?.type === "rescan") {
+          console.log("[DeviceManager] Rescanning devices (IPC)...");
+          await deviceManager.rescan(
+            config.enabledPlugins.length ? config.enabledPlugins : undefined
+          );
+          const devices = deviceManager.getConnectedDevices();
+          console.log(`[DeviceManager] Devices: ${devices.length ? devices.map((d) => d.name).join(", ") : "(none)"}`);
+        }
+      });
+    }
   }
 }
 
