@@ -1,0 +1,14 @@
+[Unit]
+Description=SatMouse — 6DOF Spatial Input Bridge
+Documentation=https://kelnishi.github.io/SatMouse/
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/satmouse/node %h/.local/share/satmouse/main.cjs
+Restart=on-failure
+RestartSec=2
+Environment=SATMOUSE_CHILD=1
+
+[Install]
+WantedBy=default.target
