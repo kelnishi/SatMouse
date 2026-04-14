@@ -1,4 +1,5 @@
 import { onManager } from "./registry.js";
+import { t } from "./locale.js";
 import type { InputManager } from "../utils/input-manager.js";
 import type { DeviceInfo } from "../core/types.js";
 import type { InputAxis, AxisRoute } from "../utils/action-map.js";
@@ -77,7 +78,7 @@ export class SatMouseDevices extends HTMLElement {
   disconnectedCallback() {
     this.unsub?.();
     this.unbind();
-    this.container.innerHTML = `<span class="empty">No devices</span>`;
+    this.container.innerHTML = `<span class="empty">${t("noDevices")}</span>`;
   }
 
   private bind(mgr: InputManager): void {
@@ -145,7 +146,7 @@ export class SatMouseDevices extends HTMLElement {
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.checked = route.flip ?? false;
-      cb.title = "Flip";
+      cb.title = t("flip");
       const routeIndex = i;
       cb.addEventListener("change", () => {
         this.updateRoute(device.id, routeIndex, deviceAxes, { flip: cb.checked });
@@ -177,9 +178,9 @@ export class SatMouseDevices extends HTMLElement {
 
     // Scale sliders
     for (const [label, key, globalKey] of [
-      ["Trans", "translateScale", "translateScale"],
-      ["Rot", "rotateScale", "rotateScale"],
-      ["W", "wScale", "wScale"],
+      [t("translateScale"), "translateScale", "translateScale"],
+      [t("rotateScale"), "rotateScale", "rotateScale"],
+      [t("wScale"), "wScale", "wScale"],
     ] as const) {
       const row = document.createElement("div");
       row.className = "slider-row";
@@ -202,7 +203,7 @@ export class SatMouseDevices extends HTMLElement {
     btnSection.className = "btn-section";
     const btnLabel = document.createElement("div");
     btnLabel.className = "btn-section-label";
-    btnLabel.textContent = "Button Mappings";
+    btnLabel.textContent = t("buttonMappings");
     btnSection.appendChild(btnLabel);
 
     const buttonRoutes: ButtonRoute[] = cfg.buttonRoutes ?? [];
@@ -232,10 +233,10 @@ export class SatMouseDevices extends HTMLElement {
       const editBtn = document.createElement("button");
       editBtn.className = "btn-remove";
       editBtn.textContent = "\u270E";
-      editBtn.title = "Remap key";
+      editBtn.title = t("remapKey");
       const routeIdx = i;
       editBtn.addEventListener("click", () => {
-        keySpan.textContent = "Press a key...";
+        keySpan.textContent = t("pressAKey");
         keySpan.style.color = "#f39c12";
         const onKey = (e: KeyboardEvent) => {
           e.preventDefault();
@@ -256,7 +257,7 @@ export class SatMouseDevices extends HTMLElement {
       const removeBtn = document.createElement("button");
       removeBtn.className = "btn-remove";
       removeBtn.textContent = "\u00d7";
-      removeBtn.title = "Remove";
+      removeBtn.title = t("remove");
       removeBtn.addEventListener("click", () => {
         const current = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
         const updated = current.filter((_: ButtonRoute, j: number) => j !== routeIdx);
@@ -270,7 +271,7 @@ export class SatMouseDevices extends HTMLElement {
     // Add mapping button with listen flow
     const addBtn = document.createElement("button");
     addBtn.className = "btn-add";
-    addBtn.textContent = "+ Add Button Mapping";
+    addBtn.textContent = t("addButtonMapping");
     addBtn.addEventListener("click", () => {
       if (addBtn.classList.contains("listening")) return;
       this.startButtonListen(addBtn, mgr, device, panel);
@@ -281,7 +282,7 @@ export class SatMouseDevices extends HTMLElement {
     // Reset button
     const resetBtn = document.createElement("button");
     resetBtn.className = "reset-btn";
-    resetBtn.textContent = "Restore Defaults";
+    resetBtn.textContent = t("restoreDefaults");
     resetBtn.addEventListener("click", () => {
       mgr.resetDeviceConfig(device.id);
       this.refreshControls(panel, device);
@@ -329,7 +330,7 @@ export class SatMouseDevices extends HTMLElement {
     panel: HTMLDetailsElement,
   ): void {
     btn.classList.add("listening");
-    btn.textContent = "Press a device button...";
+    btn.textContent = t("pressDeviceButton");
 
     // Step 1: Listen for device button
     const onButton = (event: ButtonEvent) => {
@@ -337,7 +338,7 @@ export class SatMouseDevices extends HTMLElement {
       mgr.off("buttonEvent", onButton);
 
       const capturedButton = event.button;
-      btn.textContent = `Btn ${capturedButton} \u2192 Press a key...`;
+      btn.textContent = `Btn ${capturedButton} \u2192 ${t("pressAKey")}`;
 
       // Step 2: Listen for keyboard key
       const onKey = (e: KeyboardEvent) => {
@@ -368,7 +369,7 @@ export class SatMouseDevices extends HTMLElement {
         mgr.off("buttonEvent", onButton);
         document.removeEventListener("keydown", onCancel, true);
         btn.classList.remove("listening");
-        btn.textContent = "+ Add Button Mapping";
+        btn.textContent = t("addButtonMapping");
       }
     };
     document.addEventListener("keydown", onCancel, true);
@@ -377,7 +378,7 @@ export class SatMouseDevices extends HTMLElement {
   private removeDevice(device: DeviceInfo): void {
     this.shadowRoot!.getElementById(`dev-${device.id}`)?.remove();
     if (this.container.children.length === 0) {
-      this.container.innerHTML = `<span class="empty">No devices</span>`;
+      this.container.innerHTML = `<span class="empty">${t("noDevices")}</span>`;
     }
   }
 }
