@@ -15,8 +15,8 @@ certs/
 
 # SEA artifacts
 *.blob
-satmouse
-satmouse.exe
+/satmouse
+/satmouse.exe
 
 # Logs
 logs
@@ -34,3 +34,5 @@ npm-debug.log*
 # IDE
 .vscode-test
 src/extension/xcode/build/
+xcuserdata/
+*.xcuserstate

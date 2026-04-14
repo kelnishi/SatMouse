@@ -1,0 +1,33 @@
+{
+  "manifest_version": 2,
+  "name": "SatMouse",
+  "version": "0.15.2",
+  "description": "Connects web apps to SpaceMouse, gamepads, and other 6DOF spatial input devices via the SatMouse bridge. Zero-config, open protocol.",
+  "homepage_url": "https://kelnishi.github.io/SatMouse",
+  "author": "Kelvin Nishikawa",
+  "permissions": [
+    "nativeMessaging",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "persistent": true
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "icons": {
+    "48": "images/icon-48.png",
+    "128": "images/icon-128.png"
+  }
+}
