@@ -26,9 +26,15 @@ export class SatMouseWebSocketServer {
   private wss: WebSocketServer | null = null;
   private clients = new Set<ClientSession>();
   private port: number;
+  private getDevices: (() => DeviceInfo[]) | null = null;
 
   constructor(port: number) {
     this.port = port;
+  }
+
+  /** Set a callback to get the current device list (sent to new clients on connect) */
+  setDeviceProvider(fn: () => DeviceInfo[]): void {
+    this.getDevices = fn;
   }
 
   start(httpServer?: any): void {
@@ -66,6 +72,15 @@ export class SatMouseWebSocketServer {
       this.clients.add(session);
 
       console.log(`[WebSocket] Client connected (${subprotocol}, ${this.clients.size} total) from ${origin || "unknown"}`);
+
+      // Send current device list so clients don't need a separate HTTP fetch
+      if (this.getDevices) {
+        for (const device of this.getDevices()) {
+          try {
+            ws.send(JSON.stringify({ type: "deviceStatus", data: { event: "connected", device, timestamp: performance.now() * 1000 } }));
+          } catch {}
+        }
+      }
 
       // Bridge is send-only — drop any data received from clients
       ws.on("message", () => {

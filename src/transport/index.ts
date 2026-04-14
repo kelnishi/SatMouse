@@ -48,6 +48,7 @@ export class TransportManager {
       this.ws.broadcastDeviceStatus("disconnected", info);
     });
 
+    this.ws.setDeviceProvider(() => deviceManager.getConnectedDevices());
     this.ws.start(httpServer);
     this.legacy.start();
 
