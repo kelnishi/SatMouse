@@ -96,6 +96,13 @@ export class SatMouseWebSocketServer {
     }
   }
 
+  getClientInfo(): Array<{ transport: string; subprotocol: string }> {
+    return [...this.clients].filter(c => c.ws.readyState === WebSocket.OPEN).map(c => ({
+      transport: "websocket",
+      subprotocol: c.subprotocol,
+    }));
+  }
+
   broadcastButtonEvent(data: ButtonEvent): void {
     const json = JSON.stringify({ type: "buttonEvent", data });
     for (const client of this.clients) {

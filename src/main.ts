@@ -149,6 +149,8 @@ async function main(): Promise<void> {
   const transportManager = new TransportManager(config);
   await transportManager.start(deviceManager, httpServer);
 
+  // Wire client status for /api/status
+  tdServer.getClients = () => transportManager.getClientInfo();
 
   // mDNS
   const mdns = new MDNSAdvertiser(config);
