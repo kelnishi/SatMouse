@@ -62,21 +62,26 @@ rm -rf src/extension/xcode/build
 # In CI (no Mac Development cert), skip Xcode signing — the release
 # workflow re-signs everything with a Developer ID cert afterward.
 # Locally, use Automatic signing with the developer's team ID.
+XCODE_COMMON_ARGS=(
+  -project "$XCODE_PROJECT"
+  -scheme "SatMouse" -configuration Release
+  -derivedDataPath src/extension/xcode/build
+  MARKETING_VERSION="$PKG_VERSION"
+  CURRENT_PROJECT_VERSION="$PKG_VERSION"
+  -quiet
+)
+
 if [ -n "${CI:-}" ]; then
-  xcodebuild -project "$XCODE_PROJECT" \
-    -scheme "SatMouse" -configuration Release \
-    -derivedDataPath src/extension/xcode/build \
+  xcodebuild "${XCODE_COMMON_ARGS[@]}" \
     CODE_SIGN_IDENTITY="-" \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGNING_ALLOWED=NO \
-    -quiet 2>&1 || { echo "Xcode build failed"; exit 1; }
+    2>&1 || { echo "Xcode build failed"; exit 1; }
 else
-  xcodebuild -project "$XCODE_PROJECT" \
-    -scheme "SatMouse" -configuration Release \
-    -derivedDataPath src/extension/xcode/build \
+  xcodebuild "${XCODE_COMMON_ARGS[@]}" \
     DEVELOPMENT_TEAM="$TEAM_ID" \
     CODE_SIGN_STYLE="Automatic" \
-    -quiet 2>&1 || { echo "Xcode build failed"; exit 1; }
+    2>&1 || { echo "Xcode build failed"; exit 1; }
 fi
 
 # Step 3: Copy Xcode output
@@ -124,23 +129,27 @@ if [ -z "$IDENTITY" ]; then
   IDENTITY="-"
 fi
 
-# Use the Xcode entitlements file directly (extraction from signed binary
-# produces binary plist with FADE7171 header that codesign can't re-apply)
+# Entitlements files
 APP_ENTITLEMENTS="src/extension/xcode/SatMouse/SatMouse/SatMouse.entitlements"
+EXT_ENTITLEMENTS="scripts/entitlements-extension.plist"
 
-# Sign Node binary with app entitlements (needs USB, network, bluetooth)
+# Inside-out signing: innermost first, parent bundle last.
+# Never use --deep — it flattens entitlements and breaks the .appex.
+
+# 1. Sign native .node addons
+find "$RESOURCES/node_modules" -name "*.node" -exec codesign --force --sign "$IDENTITY" {} \; 2>/dev/null || true
+
+# 2. Sign Node binary (needs USB, network, bluetooth, JIT)
 codesign --force --sign "$IDENTITY" \
   --entitlements "$APP_ENTITLEMENTS" \
   "$RESOURCES/bin/node" 2>/dev/null || true
 
-# Sign native .node addons
-find "$RESOURCES/node_modules" -name "*.node" -exec codesign --force --sign "$IDENTITY" {} \; 2>/dev/null || true
-
-# Re-sign the .appex (preserving its entitlements)
-codesign --force --sign "$IDENTITY" --preserve-metadata=entitlements \
+# 3. Sign the .appex with its own entitlements (sandbox + network.client)
+codesign --force --sign "$IDENTITY" \
+  --entitlements "$EXT_ENTITLEMENTS" \
   "$APP/Contents/PlugIns/SatMouse Extension.appex" 2>/dev/null || true
 
-# Re-sign the parent .app last (with explicit entitlements since resources changed)
+# 4. Sign the parent .app last
 codesign --force --sign "$IDENTITY" \
   --entitlements "$APP_ENTITLEMENTS" \
   "$APP" 2>/dev/null || true
