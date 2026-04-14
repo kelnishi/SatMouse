@@ -688,9 +688,9 @@
 
   <script type="module">
     // Live demo — connects to SatMouse bridge on localhost if running
-    import { SatMouseConnection } from "https://unpkg.com/@kelnishi/satmouse-client@0.16.0/dist/core/index.js";
-    import { InputManager } from "https://unpkg.com/@kelnishi/satmouse-client@0.16.0/dist/utils/index.js";
-    import { registerSatMouse } from "https://unpkg.com/@kelnishi/satmouse-client@0.16.0/dist/elements/index.js";
+    import { SatMouseConnection } from "https://unpkg.com/@kelnishi/satmouse-client@0.18.0/dist/core/index.js";
+    import { InputManager } from "https://unpkg.com/@kelnishi/satmouse-client@0.18.0/dist/utils/index.js";
+    import { registerSatMouse } from "https://unpkg.com/@kelnishi/satmouse-client@0.18.0/dist/elements/index.js";
 
     // Check if we're returning from a negotiate callback
     const params = new URLSearchParams(globalThis.location.search);
@@ -698,7 +698,14 @@
     const negotiatedWsPort = params.get("wsPort");
     const negotiatedCertHash = params.get("certHash");
 
-    const connectOptions = { maxRetries: 1, reconnectDelay: 5000 };
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const connectOptions = {
+      maxRetries: 1,
+      reconnectDelay: 5000,
+      // Safari blocks fetch to localhost from HTTPS (no PNA prompt).
+      // Skip WebTransport discovery — use extension or negotiate fallback.
+      ...(isSafari && { transports: ["extension", "websocket"] }),
+    };
 
     // If we have negotiate results, connect directly with cert hash
     if (negotiatedIp && negotiatedCertHash) {
