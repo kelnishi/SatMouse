@@ -1,51 +1,51 @@
 %%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#2980b9', 'primaryTextColor': '#ecf0f1', 'primaryBorderColor': '#3498db', 'lineColor': '#5dade2', 'secondaryColor': '#16213e', 'tertiaryColor': '#0f3460', 'background': '#1a1a2e', 'mainBkg': '#16213e', 'nodeBorder': '#3498db', 'clusterBkg': '#0f3460', 'clusterBorder': '#1a4a8a', 'titleColor': '#ecf0f1', 'edgeLabelBackground': '#16213e' }}}%%
 
-graph BT
+graph TB
+  APP[🖥️ Your App]
+
+  subgraph client ["@kelnishi/satmouse-client · npm"]
+    direction TB
+    REACT["react<br/>Provider · hooks · components"]
+    UTILS["utils<br/>InputManager · transforms · config"]
+    CORE["core<br/>connection · discovery · decode"]
+  end
+
+  subgraph ext [Safari Web Extension · .appex]
+    direction TB
+    CS[content.js<br/>postMessage to page]
+    BG[background.js<br/>WebSocket to bridge]
+  end
+
+  subgraph bridge [SatMouse Bridge · Node SEA]
+    direction TB
+    TD[td.json · WoT Thing Description]
+    MD[mDNS · _wot._tcp]
+    WT[WebTransport · HTTP/3 QUIC]
+    WS[WebSocket · fallback]
+    TS[Transport Server]
+    PM[Plugin Manager]
+    SP[device plugins<br/>macOS · Windows · Linux]
+  end
+
   subgraph hw [Hardware Layer]
     SM[🎮 6DOF Spatial Input<br/>USB / Wireless]
     DIY[🔌 DIY / HID<br/>future devices]
   end
 
-  subgraph bridge [SatMouse Bridge · Node SEA]
-    direction BT
-    SP[device plugins<br/>macOS · Windows · Linux]
-    PM[Plugin Manager]
-    TS[Transport Server]
-    WT[WebTransport · HTTP/3 QUIC]
-    WS[WebSocket · fallback]
-    MD[mDNS · _wot._tcp]
-    TD[td.json · WoT Thing Description]
-  end
-
-  subgraph ext [Safari Web Extension · .appex]
-    direction BT
-    CS[content.js<br/>postMessage to page]
-    BG[background.js<br/>WebSocket to bridge]
-  end
-
-  subgraph client ["@kelnishi/satmouse-client · npm"]
-    direction BT
-    CORE["core<br/>connection · discovery · decode"]
-    UTILS["utils<br/>InputManager · transforms · config"]
-    REACT["react<br/>Provider · hooks · components"]
-  end
-
-  APP[🖥️ Your App]
-
-  SP --> SM
-  SP --> DIY
-  PM --> SP
-  TS --> PM
-  WT --> TS
-  WS --> TS
-  BG -->|localhost| WS
-  CS --> BG
+  APP --> REACT
+  APP -->|direct use| UTILS
+  REACT --> UTILS
+  UTILS --> CORE
+  CORE -->|binary datagrams| WT
+  CORE -->|JSON frames| WS
   CORE -->|postMessage| CS
   CORE -.->|discover| MD
   CORE -.->|negotiate| TD
-  CORE -->|binary datagrams| WT
-  CORE -->|JSON frames| WS
-  UTILS --> CORE
-  REACT --> UTILS
-  APP --> REACT
-  APP -->|direct use| UTILS
+  CS --> BG
+  BG -->|localhost| WS
+  WT --> TS
+  WS --> TS
+  TS --> PM
+  PM --> SP
+  SP --> SM
+  SP --> DIY
