@@ -134,7 +134,7 @@ export class SatMouseDevices extends HTMLElement {
     const routeGroup = document.createElement("div");
     routeGroup.className = "route-group";
     const deviceAxes = device.axes ?? ["tx", "ty", "tz", "rx", "ry", "rz"];
-    const routes = this.getRoutes(device.id, deviceAxes);
+    const routes = this.getRoutes(device, deviceAxes);
 
     for (let i = 0; i < deviceAxes.length; i++) {
       const route = routes[i] ?? { source: deviceAxes[i] as InputAxis, target: deviceAxes[i].replace(/[+-]$/, "") as InputAxis };
@@ -291,25 +291,33 @@ export class SatMouseDevices extends HTMLElement {
     panel.appendChild(controls);
   }
 
-  private getRoutes(deviceId: string, deviceAxes: string[]): AxisRoute[] {
-    // Only use saved device config routes — not the global fallback
+  private getRoutes(device: DeviceInfo, deviceAxes: string[]): AxisRoute[] {
     const mgr = this.manager!;
-    const devCfg = mgr.config.devices[deviceId];
+
+    // 1. Exact device ID
+    const devCfg = mgr.config.devices[device.id];
     if (devCfg?.routes && Array.isArray(devCfg.routes)) return devCfg.routes;
 
-    // Check pattern matches
+    // 2. Pattern match
     for (const [pattern, cfg] of Object.entries(mgr.config.devices)) {
-      if (pattern.endsWith("*") && deviceId.startsWith(pattern.slice(0, -1))) {
+      if (pattern.endsWith("*") && device.id.startsWith(pattern.slice(0, -1))) {
         if (cfg.routes && Array.isArray(cfg.routes)) return cfg.routes;
       }
     }
 
-    // Build from device axes
+    // 3. Device class defaults
+    if (device.deviceClass && mgr.config.deviceClasses) {
+      const classCfg = mgr.config.deviceClasses[device.deviceClass];
+      if (classCfg?.routes && Array.isArray(classCfg.routes)) return classCfg.routes;
+    }
+
+    // 4. Build from device axes metadata
     return buildRoutes(deviceAxes);
   }
 
   private updateRoute(deviceId: string, index: number, deviceAxes: string[], patch: Partial<AxisRoute>): void {
-    const base = this.getRoutes(deviceId, deviceAxes);
+    const device = Array.from(this.manager!.getDevicesWithConfig()).find(d => d.device.id === deviceId)?.device;
+    const base = this.getRoutes(device ?? { id: deviceId } as DeviceInfo, deviceAxes);
     const updated = base.map((r, j) => j === index ? { ...r, ...patch } : { ...r });
     this.manager!.updateDeviceConfig(deviceId, { routes: updated });
   }
