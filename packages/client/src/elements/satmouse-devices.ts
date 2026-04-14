@@ -66,8 +66,11 @@ export class SatMouseDevices extends HTMLElement {
   };
 
   private stateHandler = (state: string) => {
-    if (state === "connected") {
-      this.manager?.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d)));
+    if (state === "connected" && this.manager) {
+      for (const { device } of this.manager.getDevicesWithConfig()) {
+        this.addDevice(device);
+      }
+      this.manager.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d))).catch(() => {});
     }
   };
 
@@ -87,7 +90,12 @@ export class SatMouseDevices extends HTMLElement {
     mgr.on("deviceStatus", this.deviceStatusHandler);
     mgr.on("stateChange", this.stateHandler);
     if (mgr.state === "connected") {
-      mgr.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d)));
+      // Show already-known devices immediately (survives remount)
+      for (const { device } of mgr.getDevicesWithConfig()) {
+        this.addDevice(device);
+      }
+      // Then try to refresh from the bridge (may fail on HTTPS)
+      mgr.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d))).catch(() => {});
     }
   }
 
