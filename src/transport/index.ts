@@ -59,6 +59,10 @@ export class TransportManager {
     }
   }
 
+  getClientInfo(): Array<{ transport: string; subprotocol?: string }> {
+    return this.ws.getClientInfo();
+  }
+
   stop(): void {
     this.wt.stop();
     this.ws.stop();

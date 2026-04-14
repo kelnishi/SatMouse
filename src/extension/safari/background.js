@@ -1,116 +1,86 @@
-/**
- * SatMouse Safari Extension — Background Service Worker
- *
- * Relays spatial data between the SatMouse native bridge and web pages.
- * Web pages connect via browser.runtime.connect(extensionId).
- * The bridge streams data via Chrome-compatible native messaging (stdin/stdout JSON).
- *
- * Security:
- * - Validates sender origin against externally_connectable allowlist (enforced by browser)
- * - Validates all messages from native host (schema check, value clamping)
- * - Never executes code from messages
- * - Rate limits: drops messages if subscriber queue backs up
- */
+// SatMouse Extension — Background
+// Connects directly to the bridge via WebSocket (extensions bypass mixed-content)
+// and relays spatial data to content scripts via runtime.connect ports.
 
-const NATIVE_APP_ID = "com.kelnishi.SatMouse";
-const VALID_MESSAGE_TYPES = new Set(["spatialData", "buttonEvent", "deviceStatus", "deviceInfo"]);
-const MAX_MESSAGE_SIZE = 65536; // 64KB — spatial frame is ~200 bytes JSON
+var api = (typeof browser !== "undefined") ? browser : chrome;
+var ws = null;
+var subscribers = new Map();
+var portId = 0;
 
-let nativePort = null;
-const subscribers = new Map(); // portId → port
-
-let portIdCounter = 0;
-
-function ensureNativePort() {
-  if (nativePort) return nativePort;
+function ensureWebSocket() {
+  if (ws && ws.readyState === WebSocket.OPEN) return;
+  if (ws && ws.readyState === WebSocket.CONNECTING) return;
 
   try {
-    nativePort = browser.runtime.connectNative(NATIVE_APP_ID);
-  } catch (err) {
-    console.error("[SatMouse Extension] Failed to connect to native app:", err);
-    return null;
+    ws = new WebSocket("ws://127.0.0.1:18945/spatial", "satmouse-json");
+  } catch (e) {
+    console.error("[SatMouse] WebSocket failed:", e);
+    return;
   }
 
-  nativePort.onMessage.addListener((msg) => {
-    // Validate message from native host
-    if (!msg || typeof msg !== "object") return;
-    if (!VALID_MESSAGE_TYPES.has(msg.type)) return;
+  ws.onopen = function() {
+    console.log("[SatMouse] Connected to bridge");
+    broadcast({ type: "bridgeConnected" });
+  };
 
-    // Validate spatial data ranges
-    if (msg.type === "spatialData" && msg.data) {
-      const d = msg.data;
-      if (!isFiniteVec3(d.translation) || !isFiniteVec3(d.rotation)) return;
-    }
+  ws.onmessage = function(event) {
+    try {
+      var msg = JSON.parse(event.data);
+      broadcast(msg);
+    } catch (e) {}
+  };
 
-    // Validate button event
-    if (msg.type === "buttonEvent" && msg.data) {
-      const d = msg.data;
-      if (!Number.isInteger(d.button) || d.button < 0 || d.button > 31) return;
-      if (typeof d.pressed !== "boolean") return;
-    }
+  ws.onclose = function() {
+    console.log("[SatMouse] Bridge disconnected");
+    ws = null;
+    broadcast({ type: "disconnected" });
+    // Reconnect after delay
+    setTimeout(ensureWebSocket, 2000);
+  };
 
-    // Broadcast to all connected web pages
-    for (const [id, port] of subscribers) {
-      try {
-        port.postMessage(msg);
-      } catch {
-        // Port disconnected — will be cleaned up by onDisconnect
-      }
-    }
-  });
-
-  nativePort.onDisconnect.addListener(() => {
-    console.log("[SatMouse Extension] Native port disconnected");
-    nativePort = null;
-    // Notify all subscribers
-    for (const [id, port] of subscribers) {
-      try {
-        port.postMessage({ type: "disconnected" });
-      } catch {}
-    }
-  });
-
-  return nativePort;
+  ws.onerror = function() {
+    // onclose will fire next
+  };
 }
 
-// Handle connections from web pages
-browser.runtime.onConnectExternal.addListener((port) => {
-  const sender = port.sender;
+function broadcast(msg) {
+  subscribers.forEach(function(port) {
+    try { port.postMessage(msg); } catch (e) {}
+  });
+}
 
-  // Additional origin logging (browser enforces externally_connectable)
-  console.log(`[SatMouse Extension] Connection from ${sender?.url ?? "unknown"}`);
+api.runtime.onConnect.addListener(function(port) {
+  if (port.name !== "satmouse-page") return;
 
-  const id = ++portIdCounter;
+  var id = ++portId;
   subscribers.set(id, port);
+  console.log("[SatMouse] Page connected (" + subscribers.size + " total)");
 
-  port.onMessage.addListener((msg) => {
-    if (!msg || typeof msg !== "object") return;
+  // Start WebSocket if not already
+  ensureWebSocket();
 
-    // Only accept known actions
-    if (msg.action === "subscribe") {
-      const np = ensureNativePort();
-      if (np) {
-        np.postMessage({ action: "subscribe" });
-      } else {
-        port.postMessage({ type: "error", message: "SatMouse bridge not running" });
+  // Tell page we're connected if WS is already open
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    port.postMessage({ type: "connected" });
+  }
+
+  port.onMessage.addListener(function(msg) {
+    if (msg && msg.action === "subscribe") {
+      ensureWebSocket();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        port.postMessage({ type: "connected" });
       }
     }
-    // All other actions silently ignored
   });
 
-  port.onDisconnect.addListener(() => {
+  port.onDisconnect.addListener(function() {
     subscribers.delete(id);
-    console.log(`[SatMouse Extension] Tab disconnected (${subscribers.size} remaining)`);
-
-    // If no subscribers left, disconnect native port to save resources
-    if (subscribers.size === 0 && nativePort) {
-      nativePort.disconnect();
-      nativePort = null;
+    console.log("[SatMouse] Page disconnected (" + subscribers.size + " remaining)");
+    if (subscribers.size === 0 && ws) {
+      ws.close();
+      ws = null;
     }
   });
 });
 
-function isFiniteVec3(v) {
-  return v && typeof v === "object"
-    && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
-}
+console.log("[SatMouse] Background loaded");

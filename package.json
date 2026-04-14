@@ -15,6 +15,8 @@
     "build:tray": "esbuild src/tray-wrapper.ts --bundle --platform=node --format=cjs --outfile=dist/tray-wrapper.cjs --external:koffi",
     "build:sea": "bash scripts/build-sea.sh",
     "dev": "node --import=tsx src/main.ts",
+    "package": "npm run build && npm run build:client && bash scripts/package-macos-app.sh",
+    "install:local": "npm run package && rm -rf ~/Applications/SatMouse.app && cp -R dist/SatMouse.app ~/Applications/",
     "typecheck": "tsc --noEmit",
     "generate-certs": "bash scripts/generate-dev-certs.sh"
   },

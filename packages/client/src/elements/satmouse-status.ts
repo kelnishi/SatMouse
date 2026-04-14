@@ -85,10 +85,23 @@ export class SatMouseStatus extends HTMLElement {
       this.text.textContent = "Connecting...";
       this.launch.style.display = "none";
     } else if (state === "failed") {
-      this.text.textContent = "Not running";
-      this.launch.style.display = "inline-block";
-      this.launch.disabled = false;
-      this.launch.textContent = this.showDownload ? "Download SatMouse" : "Launch SatMouse";
+      // Detect Safari without extension — suggest enabling it
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      const hasExtension = !!(globalThis as any).__satmouseExtensionAvailable;
+      if (isSafari && !hasExtension) {
+        this.text.textContent = "Extension required";
+        this.launch.style.display = "inline-block";
+        this.launch.disabled = false;
+        this.launch.textContent = "Enable Extension";
+        this.showDownload = false;
+        this.needsExtension = true;
+      } else {
+        this.text.textContent = "Not running";
+        this.launch.style.display = "inline-block";
+        this.launch.disabled = false;
+        this.launch.textContent = this.showDownload ? "Download SatMouse" : "Launch SatMouse";
+        this.needsExtension = false;
+      }
     } else {
       this.text.textContent = "Disconnected";
       this.launch.style.display = "none";
@@ -96,10 +109,26 @@ export class SatMouseStatus extends HTMLElement {
   }
 
   private showDownload = false;
+  private needsExtension = false;
 
   private startLaunchFlow(): void {
+    if (this.needsExtension) {
+      // Open Safari extension preferences via the bridge's URL scheme
+      window.location.href = "satmouse://enable-extension";
+      // Retry connection after user enables the extension
+      this.launch.textContent = "Connecting...";
+      this.launch.disabled = true;
+      this.stopPoll();
+      this.pollTimer = setInterval(() => {
+        if (this.manager?.state === "connected") { this.stopPoll(); return; }
+        this.manager?.retry();
+      }, 2000);
+      // Give up after 30s
+      setTimeout(() => { this.stopPoll(); this.launch.disabled = false; this.launch.textContent = "Enable Extension"; }, 30000);
+      return;
+    }
+
     if (this.showDownload) {
-      // Second click — navigate to download page
       window.location.href = "https://github.com/kelnishi/SatMouse/releases/latest";
       return;
     }

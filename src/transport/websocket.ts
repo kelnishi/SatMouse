@@ -11,6 +11,8 @@ const MAX_FRAME_SIZE = 65536; // 64KB
 interface ClientSession {
   ws: WebSocket;
   subprotocol: string;
+  origin: string;
+  userAgent: string;
 }
 
 /**
@@ -43,7 +45,7 @@ export class SatMouseWebSocketServer {
       },
     });
 
-    this.wss.on("connection", (ws: WebSocket, _req: IncomingMessage) => {
+    this.wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
       // Connection limit
       if (this.clients.size >= MAX_CLIENTS) {
         console.warn(`[WebSocket] Rejected connection (limit ${MAX_CLIENTS})`);
@@ -57,10 +59,13 @@ export class SatMouseWebSocketServer {
         return;
       }
 
-      const session: ClientSession = { ws, subprotocol };
+      // Capture and sanitize client info (truncate to prevent abuse)
+      const origin = (req.headers.origin ?? "").toString().slice(0, 256);
+      const userAgent = (req.headers["user-agent"] ?? "").toString().slice(0, 512);
+      const session: ClientSession = { ws, subprotocol, origin, userAgent };
       this.clients.add(session);
 
-      console.log(`[WebSocket] Client connected (${subprotocol}, ${this.clients.size} total)`);
+      console.log(`[WebSocket] Client connected (${subprotocol}, ${this.clients.size} total) from ${origin || "unknown"}`);
 
       // Bridge is send-only — drop any data received from clients
       ws.on("message", () => {
@@ -96,6 +101,17 @@ export class SatMouseWebSocketServer {
     }
   }
 
+  getClientInfo(): Array<{ transport: string; subprotocol: string; origin: string; browser: string; extension: boolean }> {
+    return [...this.clients].filter(c => c.ws.readyState === WebSocket.OPEN).map(c => ({
+      transport: "websocket",
+      subprotocol: c.subprotocol,
+      origin: c.origin,
+      browser: parseBrowser(c.userAgent),
+      // Extension clients connect from the background script (no origin, node-like UA)
+      extension: c.origin === "" && c.userAgent.includes("Safari") && !c.userAgent.includes("Chrome"),
+    }));
+  }
+
   broadcastButtonEvent(data: ButtonEvent): void {
     const json = JSON.stringify({ type: "buttonEvent", data });
     for (const client of this.clients) {
@@ -124,6 +140,18 @@ export class SatMouseWebSocketServer {
     this.clients.clear();
     console.log("[WebSocket] Stopped");
   }
+}
+
+/** Parse a user-agent string into a short browser name */
+function parseBrowser(ua: string): string {
+  if (!ua) return "Unknown";
+  if (ua.includes("Edg/")) return "Edge";
+  if (ua.includes("OPR/") || ua.includes("Opera")) return "Opera";
+  if (ua.includes("Chrome/") && !ua.includes("Edg/")) return "Chrome";
+  if (ua.includes("Safari/") && !ua.includes("Chrome")) return "Safari";
+  if (ua.includes("Firefox/")) return "Firefox";
+  if (ua.includes("node")) return "Node.js";
+  return "Unknown";
 }
 
 /** Clamp a number to int16 range, reject NaN/Infinity */

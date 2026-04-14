@@ -33,3 +33,4 @@ npm-debug.log*
 
 # IDE
 .vscode-test
+src/extension/xcode/build/

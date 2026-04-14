@@ -17,6 +17,7 @@ import { ensureCerts } from "./certs.js";
 
 const isChildProcess = !!process.env.SATMOUSE_CHILD;
 const noDevice = !!process.env.SATMOUSE_NO_DEVICE;
+const skipConnexion = !!process.env.SATMOUSE_SKIP_CONNEXION;
 
 function getVersion(): string {
   try {
@@ -33,7 +34,8 @@ async function main(): Promise<void> {
 
   // Bootstrap NSApplication before anything else on macOS
   // Required for tray icon (dev mode) and 3Dconnexion framework (always)
-  if (process.platform === "darwin") ensureNSApp();
+  // Bootstrap NSApp for 3Dconnexion (not needed when Swift handles it)
+  if (process.platform === "darwin" && !skipConnexion) ensureNSApp();
 
   // Generate TLS certs if missing (for WebTransport)
   ensureCerts(config.certsDir);
@@ -77,10 +79,13 @@ async function main(): Promise<void> {
   }
 
   if (!noDevice) {
-    deviceManager.registerPlugin(new SpaceMousePlugin());
-    deviceManager.registerPlugin(new SpaceFoxPlugin());
-    deviceManager.registerPlugin(new OrbionPlugin());
-    deviceManager.registerPlugin(new CadMousePlugin());
+    // Skip 3Dconnexion plugins when Swift app handles them (SATMOUSE_SKIP_CONNEXION)
+    if (!skipConnexion) {
+      deviceManager.registerPlugin(new SpaceMousePlugin());
+      deviceManager.registerPlugin(new SpaceFoxPlugin());
+      deviceManager.registerPlugin(new OrbionPlugin());
+      deviceManager.registerPlugin(new CadMousePlugin());
+    }
     deviceManager.registerPlugin(new HIDPlugin());
 
     await deviceManager.start(
@@ -93,6 +98,49 @@ async function main(): Promise<void> {
     console.log("\nDevices: skipped (SATMOUSE_NO_DEVICE)");
   }
 
+  // Read 3Dconnexion events from Swift parent via stdin (newline-delimited JSON)
+  if (skipConnexion && process.stdin.readable) {
+    const { buildDeviceInfo } = await import("./devices/drivers/connexion/products.js");
+    const { createInterface } = await import("node:readline");
+    let prevButtons = 0;
+    const rl = createInterface({ input: process.stdin });
+    rl.on("line", (line: string) => {
+      try {
+        const msg = JSON.parse(line);
+        if (msg.type === "spatialData" && msg.data) {
+          deviceManager.emit("spatialData", msg.data);
+        } else if (msg.type === "buttonState" && msg.data) {
+          const buttons: number = msg.data.buttons ?? 0;
+          const ts = performance.now() * 1000;
+          for (let i = 0; i < 32; i++) {
+            const mask = 1 << i;
+            if ((buttons & mask) !== (prevButtons & mask)) {
+              deviceManager.emit("buttonEvent", {
+                button: i,
+                pressed: (buttons & mask) !== 0,
+                timestamp: ts,
+              });
+            }
+          }
+          prevButtons = buttons;
+        } else if (msg.type === "deviceAdded" && msg.data) {
+          const info = buildDeviceInfo(msg.data.productId, msg.data.deviceId);
+          deviceManager.emit("deviceConnected", info);
+          console.log(`[3Dconnexion/Swift] Device added: ${info.model}`);
+        } else if (msg.type === "deviceRemoved" && msg.data) {
+          deviceManager.emit("deviceDisconnected", {
+            id: msg.data.deviceId, name: "SpaceMouse", model: "SpaceMouse",
+            vendor: "3Dconnexion", vendorId: 0x046d, productId: 0,
+            connectionType: "unknown" as const,
+          });
+        }
+      } catch {
+        // Drop malformed lines
+      }
+    });
+    console.log("[3Dconnexion] Listening for events from Swift parent via stdin");
+  }
+
   // HTTP server
   const tdServer = new TDServer(config, deviceManager);
   const httpServer = tdServer.start();
@@ -101,6 +149,8 @@ async function main(): Promise<void> {
   const transportManager = new TransportManager(config);
   await transportManager.start(deviceManager, httpServer);
 
+  // Wire client status for /api/status
+  tdServer.getClients = () => transportManager.getClientInfo();
 
   // mDNS
   const mdns = new MDNSAdvertiser(config);

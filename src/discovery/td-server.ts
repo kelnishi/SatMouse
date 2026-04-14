@@ -25,6 +25,9 @@ export class TDServer {
   private deviceManager: DeviceManager;
   private certHashBase64: string | null = null;
 
+  /** Called to get current connected client info for /api/status */
+  getClients: (() => Array<{ transport: string; subprotocol?: string }>) | null = null;
+
   constructor(config: SatMouseConfig, deviceManager: DeviceManager) {
     this.config = config;
     this.deviceManager = deviceManager;
@@ -150,12 +153,23 @@ export class TDServer {
     }
 
     if (url === "/health") {
+      let version = process.env.npm_package_version ?? "unknown";
+      if (version === "unknown") {
+        try {
+          const pkg = JSON.parse(readFileSync(resolveResource("package.json"), "utf-8"));
+          version = pkg.version ?? "unknown";
+        } catch {}
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true, version: process.env.npm_package_version ?? "unknown" }));
+      res.end(JSON.stringify({ ok: true, version }));
     } else if (url === "/td.json") {
       this.serveTD(req, res);
     } else if (url.startsWith("/negotiate")) {
       this.serveNegotiate(req, res);
+    } else if (url === "/api/status") {
+      const clients = this.getClients?.() ?? [];
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ clients }));
     } else if (url === "/api/device") {
       this.serveDeviceInfo(res);
     } else if (url.startsWith("/client")) {

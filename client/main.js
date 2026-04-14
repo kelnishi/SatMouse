@@ -255,86 +255,49 @@ var ExtensionAdapter = class {
   onDeviceStatus = null;
   onClose = null;
   onError = null;
-  port = null;
-  // browser.runtime.Port
-  extensionId;
-  constructor(extensionId) {
-    this.extensionId = extensionId;
+  messageHandler = null;
+  static isAvailable() {
+    return !!globalThis.__satmouseExtensionAvailable;
   }
   async connect() {
-    const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
-    if (!runtime?.connect) {
-      throw new Error("Browser extension API not available");
+    if (typeof globalThis.postMessage !== "function") {
+      throw new Error("postMessage not available");
     }
     return new Promise((resolve, reject) => {
-      try {
-        this.port = runtime.connect(this.extensionId);
-      } catch (err) {
-        reject(new Error("Failed to connect to SatMouse extension"));
-        return;
-      }
-      if (!this.port) {
-        reject(new Error("SatMouse extension not installed or not enabled"));
-        return;
-      }
-      let connected = false;
       const timeout = setTimeout(() => {
-        if (!connected) {
-          this.close();
-          reject(new Error("Extension connection timeout"));
-        }
+        this.close();
+        reject(new Error("Extension connection timeout"));
       }, 5e3);
-      this.port.onMessage.addListener((msg) => {
-        if (!msg || typeof msg !== "object") return;
-        if (msg.type === "connected" && !connected) {
-          connected = true;
+      this.messageHandler = (event) => {
+        if (event.data?.source !== "satmouse-extension") return;
+        const msg = event.data;
+        if ((msg.type === "connected" || msg.type === "bridgeConnected") && timeout) {
           clearTimeout(timeout);
           resolve();
-          return;
         }
         if (msg.type === "disconnected") {
           this.onClose?.();
-          return;
-        }
-        if (msg.type === "error") {
-          this.onError?.(new Error(msg.message ?? "Extension error"));
-          return;
         }
         if (msg.type === "spatialData" && msg.data) {
-          const d = msg.data;
-          if (d.translation && d.rotation && typeof d.translation.x === "number" && typeof d.rotation.x === "number") {
-            this.onSpatialData?.(d);
-          }
-          return;
+          this.onSpatialData?.(msg.data);
         }
         if (msg.type === "buttonEvent" && msg.data) {
-          const d = msg.data;
-          if (typeof d.button === "number" && typeof d.pressed === "boolean") {
-            this.onButtonEvent?.(d);
-          }
-          return;
+          this.onButtonEvent?.(msg.data);
         }
         if (msg.type === "deviceStatus" && msg.data) {
           this.onDeviceStatus?.(msg.data.event, msg.data.device);
         }
-      });
-      this.port.onDisconnect.addListener(() => {
-        if (!connected) {
-          clearTimeout(timeout);
-          reject(new Error("Extension disconnected during connect"));
-        } else {
-          this.onClose?.();
-        }
-      });
-      this.port.postMessage({ action: "subscribe" });
+      };
+      globalThis.addEventListener("message", this.messageHandler);
+      globalThis.postMessage({ target: "satmouse-extension", action: "connect" }, "*");
     });
   }
   close() {
-    try {
-      this.port?.disconnect();
-    } catch {
+    if (this.messageHandler) {
+      globalThis.removeEventListener("message", this.messageHandler);
+      this.messageHandler = null;
     }
-    this.port = null;
+    globalThis.postMessage({ target: "satmouse-extension", action: "disconnect" }, "*");
   }
 };
 
@@ -425,10 +388,8 @@ var SatMouseConnection = class extends TypedEmitter {
       }
       if (proto === "extension") {
         try {
-          const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
-          if (!runtime?.connect) continue;
-          const extensionId = this.options.extensionId ?? "";
-          const adapter = new ExtensionAdapter(extensionId);
+          if (!ExtensionAdapter.isAvailable()) continue;
+          const adapter = new ExtensionAdapter();
           if (await this.tryTransport(adapter)) return;
         } catch {
           continue;
@@ -1024,17 +985,49 @@ var SatMouseStatus = class extends HTMLElement {
       this.text.textContent = "Connecting...";
       this.launch.style.display = "none";
     } else if (state === "failed") {
-      this.text.textContent = "Not running";
-      this.launch.style.display = "inline-block";
-      this.launch.disabled = false;
-      this.launch.textContent = this.showDownload ? "Download SatMouse" : "Launch SatMouse";
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      const hasExtension = !!globalThis.__satmouseExtensionAvailable;
+      if (isSafari && !hasExtension) {
+        this.text.textContent = "Extension required";
+        this.launch.style.display = "inline-block";
+        this.launch.disabled = false;
+        this.launch.textContent = "Enable Extension";
+        this.showDownload = false;
+        this.needsExtension = true;
+      } else {
+        this.text.textContent = "Not running";
+        this.launch.style.display = "inline-block";
+        this.launch.disabled = false;
+        this.launch.textContent = this.showDownload ? "Download SatMouse" : "Launch SatMouse";
+        this.needsExtension = false;
+      }
     } else {
       this.text.textContent = "Disconnected";
       this.launch.style.display = "none";
     }
   }
   showDownload = false;
+  needsExtension = false;
   startLaunchFlow() {
+    if (this.needsExtension) {
+      window.location.href = "satmouse://enable-extension";
+      this.launch.textContent = "Connecting...";
+      this.launch.disabled = true;
+      this.stopPoll();
+      this.pollTimer = setInterval(() => {
+        if (this.manager?.state === "connected") {
+          this.stopPoll();
+          return;
+        }
+        this.manager?.retry();
+      }, 2e3);
+      setTimeout(() => {
+        this.stopPoll();
+        this.launch.disabled = false;
+        this.launch.textContent = "Enable Extension";
+      }, 3e4);
+      return;
+    }
     if (this.showDownload) {
       window.location.href = "https://github.com/kelnishi/SatMouse/releases/latest";
       return;

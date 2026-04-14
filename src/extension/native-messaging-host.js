@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// When bundled in .app, launched via: Contents/Resources/bin/node native-messaging-host.js
 
 /**
  * SatMouse Native Messaging Host
