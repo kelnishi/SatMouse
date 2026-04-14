@@ -20,6 +20,7 @@ export class ExtensionAdapter implements Transport {
   onError: ((error: Error) => void) | null = null;
 
   private messageHandler: ((event: MessageEvent) => void) | null = null;
+  private pendingDeviceFetch: ((devices: DeviceInfo[]) => void) | null = null;
 
   static isAvailable(): boolean {
     return !!(globalThis as any).__satmouseExtensionAvailable;
@@ -60,10 +61,28 @@ export class ExtensionAdapter implements Transport {
         if (msg.type === "deviceStatus" && msg.data) {
           this.onDeviceStatus?.(msg.data.event, msg.data.device);
         }
+
+        if (msg.type === "deviceList" && this.pendingDeviceFetch) {
+          this.pendingDeviceFetch(Array.isArray(msg.data) ? msg.data : []);
+          this.pendingDeviceFetch = null;
+        }
       };
 
       globalThis.addEventListener("message", this.messageHandler);
       globalThis.postMessage({ target: "satmouse-extension", action: "connect" }, "*");
+    });
+  }
+
+  fetchDeviceInfo(): Promise<DeviceInfo[]> {
+    return new Promise((resolve) => {
+      this.pendingDeviceFetch = resolve;
+      globalThis.postMessage({ target: "satmouse-extension", action: "fetchDevices" }, "*");
+      setTimeout(() => {
+        if (this.pendingDeviceFetch) {
+          this.pendingDeviceFetch = null;
+          resolve([]);
+        }
+      }, 3000);
     });
   }
 

@@ -179,11 +179,25 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
   }
 
   async fetchDeviceInfo(): Promise<DeviceInfo[]> {
-    if (!this.deviceInfoUrl) return [];
-    const res = await globalThis.fetch(this.deviceInfoUrl);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.devices ?? [];
+    // Try HTTP endpoint first
+    if (this.deviceInfoUrl) {
+      try {
+        const res = await globalThis.fetch(this.deviceInfoUrl);
+        if (res.ok) {
+          const data = await res.json();
+          return data.devices ?? [];
+        }
+      } catch {
+        // HTTP blocked (Safari HTTPS → localhost) — fall through to extension
+      }
+    }
+
+    // Fall back to extension transport if connected via extension
+    if (this.transport && "fetchDeviceInfo" in this.transport) {
+      return (this.transport as ExtensionAdapter).fetchDeviceInfo();
+    }
+
+    return [];
   }
 
   private async tryTransport(adapter: Transport): Promise<boolean> {
