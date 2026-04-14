@@ -32,20 +32,20 @@ graph TB
     DIY[🔌 DIY / HID<br/>future devices]
   end
 
-  APP --> REACT
-  APP -->|direct use| UTILS
-  REACT --> UTILS
-  UTILS --> CORE
-  CORE -->|binary datagrams| WT
-  CORE -->|JSON frames| WS
-  CORE -->|postMessage| CS
-  CORE -.->|discover| MD
-  CORE -.->|negotiate| TD
-  CS --> BG
-  BG -->|localhost| WS
-  WT --> TS
-  WS --> TS
-  TS --> PM
-  PM --> SP
-  SP --> SM
-  SP --> DIY
+  REACT --> APP
+  UTILS -->|direct use| APP
+  UTILS --> REACT
+  CORE --> UTILS
+  WT -->|binary datagrams| CORE
+  WS -->|JSON frames| CORE
+  CS -->|postMessage| CORE
+  MD -.->|discover| CORE
+  TD -.->|negotiate| CORE
+  BG --> CS
+  WS -->|localhost| BG
+  TS --> WT
+  TS --> WS
+  PM --> TS
+  SP --> PM
+  SM --> SP
+  DIY --> SP
