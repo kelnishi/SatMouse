@@ -59,12 +59,25 @@ TEAM_ID="${APPLE_TEAM_ID:-QVJ72LNVSK}"
 # Clean previous build
 rm -rf src/extension/xcode/build
 
-xcodebuild -project "$XCODE_PROJECT" \
-  -scheme "SatMouse" -configuration Release \
-  -derivedDataPath src/extension/xcode/build \
-  DEVELOPMENT_TEAM="$TEAM_ID" \
-  CODE_SIGN_STYLE="Automatic" \
-  -quiet 2>&1 || { echo "Xcode build failed"; exit 1; }
+# In CI (no Mac Development cert), skip Xcode signing — the release
+# workflow re-signs everything with a Developer ID cert afterward.
+# Locally, use Automatic signing with the developer's team ID.
+if [ -n "${CI:-}" ]; then
+  xcodebuild -project "$XCODE_PROJECT" \
+    -scheme "SatMouse" -configuration Release \
+    -derivedDataPath src/extension/xcode/build \
+    CODE_SIGN_IDENTITY="-" \
+    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGNING_ALLOWED=NO \
+    -quiet 2>&1 || { echo "Xcode build failed"; exit 1; }
+else
+  xcodebuild -project "$XCODE_PROJECT" \
+    -scheme "SatMouse" -configuration Release \
+    -derivedDataPath src/extension/xcode/build \
+    DEVELOPMENT_TEAM="$TEAM_ID" \
+    CODE_SIGN_STYLE="Automatic" \
+    -quiet 2>&1 || { echo "Xcode build failed"; exit 1; }
+fi
 
 # Step 3: Copy Xcode output
 rm -rf "$APP"
