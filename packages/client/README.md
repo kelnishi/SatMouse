@@ -152,6 +152,32 @@ manager.onButtonEvent((event) => {
 });
 ```
 
+## Localization
+
+Web Components use English by default. Override strings with `setLocale()`:
+
+```typescript
+import { setLocale, DEFAULT_LOCALE } from "@kelnishi/satmouse-client/elements";
+
+// Partial override — only the keys you provide are replaced
+setLocale({
+  connected: "Conectado",
+  disconnected: "Desconectado",
+  noDevices: "Sin dispositivos",
+  restoreDefaults: "Restaurar valores predeterminados",
+});
+```
+
+`DEFAULT_LOCALE` exports all string keys with their English defaults, so translation tooling can iterate them:
+
+```typescript
+import { DEFAULT_LOCALE } from "@kelnishi/satmouse-client/elements";
+
+// Extract all keys for your i18n pipeline
+const keys = Object.keys(DEFAULT_LOCALE);
+// ["connected", "connecting", "disconnected", "noDevices", ...]
+```
+
 ## Connection Options
 
 ```typescript
