@@ -34,7 +34,35 @@ Or install via npm:
 npx @kelnishi/satmouse
 ```
 
-On macOS, move `SatMouse.app` to `/Applications` or `~/Applications` before launching. Running from Downloads will fail due to macOS App Translocation. Double-click the app — a 🛰 icon appears in the menu bar. No dock icon, no terminal needed.
+#### macOS
+
+Move `SatMouse.app` to `/Applications` or `~/Applications` before launching (running from Downloads will fail due to App Translocation). Double-click the app — a 🛰 icon appears in the menu bar. No dock icon, no terminal needed.
+
+A bundled Safari Web Extension bypasses Safari's mixed-content and Local Network Access restrictions. Enable it in Safari → Settings → Extensions after first launch.
+
+#### Windows
+
+Extract the tarball and run `SatMouse.cmd`. A SatMouse icon appears in the notification area (system tray). Right-click for options: Open Web Client, Refresh Devices, Quit.
+
+#### Linux
+
+Extract the tarball and run the installer:
+
+```bash
+tar xzf satmouse-linux-x64.tar.gz
+bash install.sh
+```
+
+This installs a systemd user service that auto-starts on login. Manage with:
+
+```bash
+systemctl --user start satmouse      # start
+systemctl --user stop satmouse       # stop
+systemctl --user restart satmouse    # restart (rescan devices)
+journalctl --user -u satmouse -f     # view logs
+```
+
+Linux requires `libspnav` for SpaceMouse support (`apt install libspnav-dev` or equivalent, with `spacenavd` running).
 
 ### Connect from your app
 

@@ -32,9 +32,9 @@ SatMouse bridges spatial input devices to web apps over WebSocket and WebTranspo
 
 | Platform | Status |
 |---|---|
-| macOS (Apple Silicon) | .app bundle with menu bar icon |
-| Linux (x64) | Standalone binary |
-| Windows (x64) | Standalone binary |
+| macOS (Apple Silicon) | .app bundle with menu bar icon + Safari Web Extension |
+| Windows (x64) | System tray icon with context menu (`SatMouse.cmd`) |
+| Linux (x64) | systemd user service with install/uninstall scripts |
 
 ## For Client Apps
 
