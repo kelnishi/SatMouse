@@ -17,7 +17,7 @@ export interface ButtonEvent {
 }
 
 /** Device form factor */
-export type DeviceClass = "spacemouse" | "gamepad" | "dial" | "joystick" | "6dof" | "other";
+export type DeviceClass = "spacemouse" | "gamepad" | "dial" | "joystick" | "6dof" | "trackball" | "other";
 
 /** Static metadata about a connected device */
 export interface DeviceInfo {
@@ -76,4 +76,10 @@ export abstract class DevicePlugin extends EventEmitter<DevicePluginEvents> {
 
   /** List currently connected devices */
   abstract getDevices(): DeviceInfo[];
+
+  /** Receive the aggregate focus of the bridge's local web clients.
+   *  Plugins whose device server routes input by focus (e.g. OpenAxis)
+   *  forward it; others ignore it. Called on every change, including
+   *  before connect(). */
+  setHostFocus(_focused: boolean): void {}
 }

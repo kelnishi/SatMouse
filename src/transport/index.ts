@@ -3,6 +3,7 @@ import { SatMouseWebSocketServer } from "./websocket.js";
 import { LegacyServer } from "./legacy.js";
 import type { DeviceManager } from "../devices/manager.js";
 import type { SatMouseConfig } from "../config.js";
+import type { FocusTracker } from "../focus.js";
 import { join } from "node:path";
 
 /**
@@ -27,7 +28,10 @@ export class TransportManager {
     this.ws = new SatMouseWebSocketServer(config.wsPort);
   }
 
-  async start(deviceManager: DeviceManager, httpServer?: any): Promise<void> {
+  async start(deviceManager: DeviceManager, focus: FocusTracker, httpServer?: any): Promise<void> {
+    this.ws.setFocusTracker(focus);
+    this.wt.setFocusTracker(focus);
+
     deviceManager.on("spatialData", (data) => {
       this.wt.broadcastSpatialData(data);
       this.ws.broadcastSpatialData(data);

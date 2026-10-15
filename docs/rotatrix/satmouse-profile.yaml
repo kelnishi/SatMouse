@@ -1,0 +1,44 @@
+# Rotatrix profile for SatMouse. Until Rotatrix bundles one, add this to your
+# Rotatrix user config:
+#   macOS:   ~/Library/Application Support/Rotatrix/config.yaml
+#   Windows: %LOCALAPPDATA%\Rotatrix\config.yaml
+#   Linux:   ~/.local/share/Rotatrix/config.yaml
+#
+# Rotatrix selects this profile while a SatMouse web page has focus (the bridge
+# connects over OpenAxis with the tag app.satmouse). The activation toggle in
+# SatMouse's status window sets one of two tags:
+#   satmouse.activation.hold    the ball is a mouse until you hold the modifier
+#                               (Ctrl on macOS, Win on Windows, Super on Linux)
+#                               or button 4
+#   satmouse.activation.always  the ball streams 3D input the whole time;
+#                               holding the modifier or button 4 returns it
+#                               to a mouse, so you can click out of the page
+#                               without another pointing device or keyboard
+profiles:
+  satmouse:
+    description: |-
+      SatMouse: stream 3D input to the focused SatMouse web page.
+      - Hold the modifier key (Ctrl on macOS, Win on Windows, Super on Linux) or button 4 for 3D rotate,
+        or set activation to Always in SatMouse's status window.
+      - In Always, hold the modifier or button 4 to get the mouse back.
+      - Add Shift or button 2 to translate.
+    triggers: [ tag:app.satmouse ]
+    ball_mode: mouse
+    binding_selection: first_active
+    bindings:
+      # First active wins: in Always, the modifier or button 4 takes the ball
+      # back to a mouse before the 3D binding can match
+      - name: SatMouse Mouse
+        triggers:
+          - tag:satmouse.activation.always {(os:windows key:tapthru:win) (os:mac key:ctrl) (os:linux key:tapthru:super) btn:4}
+        ball_mode: mouse
+        label: Mouse
+      - name: SatMouse 3D
+        triggers:
+          - tag:satmouse.activation.always
+          - tag:satmouse.activation.hold {(os:windows key:tapthru:win) (os:mac key:ctrl) (os:linux key:tapthru:super) btn:4}
+        ball_mode: rotatrix
+        axis_map: obj_rotate
+        label: Rotate
+        bindings:
+          - { name: SatMouse Translate, triggers: [ btn:2, key:shift ], axis_map: obj_translate, label: Translate }

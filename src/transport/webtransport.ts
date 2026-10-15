@@ -1,10 +1,16 @@
 import type { SpatialData, ButtonEvent } from "../devices/types.js";
+import { isLoopbackAddress, type FocusTracker } from "../focus.js";
+import { parseFocusMessage } from "./websocket.js";
+
+const MAX_FOCUS_FRAME = 256;
 
 /**
  * WebTransport server for streaming spatial data over HTTP/3 QUIC.
  *
  * - Spatial data: sent as binary datagrams (24 bytes, unreliable/unordered)
  * - Button events: sent on reliable unidirectional streams (JSON)
+ * - Focus reports: received on client-opened unidirectional streams, same
+ *   length-prefixed JSON framing, accepted from local peers only
  *
  * Requires TLS — uses self-signed certificates for local development.
  */
@@ -14,11 +20,17 @@ export class WebTransportServer {
   private port: number;
   private certPath: string;
   private keyPath: string;
+  private focus: FocusTracker | null = null;
 
   constructor(port: number, certPath: string, keyPath: string) {
     this.port = port;
     this.certPath = certPath;
     this.keyPath = keyPath;
+  }
+
+  /** Set the tracker that receives client focus reports */
+  setFocusTracker(focus: FocusTracker): void {
+    this.focus = focus;
   }
 
   async start(): Promise<void> {
@@ -59,18 +71,63 @@ export class WebTransportServer {
         this.sessions.add(session);
         console.log(`[WebTransport] Client connected (${this.sessions.size} total)`);
 
+        if (isLoopbackAddress(session.peerAddress)) this.readFocusStreams(session);
+
         session.closed
           .then(() => {
             this.sessions.delete(session);
+            this.focus?.remove(session);
             console.log(`[WebTransport] Client disconnected (${this.sessions.size} total)`);
           })
           .catch(() => {
             this.sessions.delete(session);
+            this.focus?.remove(session);
           });
       }
     } catch (err) {
       console.error("[WebTransport] Session accept error:", err);
     }
+  }
+
+  /** Each client-opened stream carries one length-prefixed JSON focus report */
+  private async readFocusStreams(session: any): Promise<void> {
+    const reader = session.incomingUnidirectionalStreams.getReader();
+    try {
+      while (true) {
+        const { value: stream, done } = await reader.read();
+        if (done) break;
+        this.readFocusStream(session, stream);
+      }
+    } catch {
+      // Session closed
+    }
+  }
+
+  private async readFocusStream(session: any, stream: any): Promise<void> {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        length += value.length;
+        if (length > 4 + MAX_FOCUS_FRAME) {
+          reader.cancel().catch(() => {});
+          return;
+        }
+        chunks.push(value);
+      }
+    } catch {
+      return;
+    }
+
+    const buf = Buffer.concat(chunks);
+    if (buf.length < 4) return;
+    const payloadLength = buf.readUInt32LE(0);
+    if (payloadLength !== buf.length - 4) return;
+    const focused = parseFocusMessage(buf.subarray(4).toString("utf-8"));
+    if (focused !== null && this.sessions.has(session)) this.focus?.set(session, focused);
   }
 
   broadcastSpatialData(data: SpatialData): void {
@@ -109,6 +166,7 @@ export class WebTransportServer {
 
   stop(): void {
     for (const session of this.sessions) {
+      this.focus?.remove(session);
       try {
         session.close();
       } catch {}

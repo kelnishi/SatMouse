@@ -108,6 +108,33 @@ All messages are JSON text frames:
 }
 ```
 
+## Client → Bridge: Focus Reports
+
+The bridge streams to clients and accepts one message type back: a report of
+whether the client's page has input focus. Some device servers send input only
+to a focused application, and the bridge is never the foreground application
+itself, so it relays its clients' focus instead.
+
+```json
+{ "type": "focus", "focused": true }
+```
+
+| Transport | Framing |
+|---|---|
+| WebSocket | JSON text frame, on either subprotocol |
+| WebTransport | Client-opened unidirectional stream carrying one `[uint32 LE length][UTF-8 JSON]` frame |
+| Safari extension | `postMessage({ target: "satmouse-extension", action: "focus", focused })`; the background script relays the OR of its tabs over its WebSocket |
+
+Rules:
+
+- A client sends its state on connect and on every change. `focused` is true
+  while `document.hasFocus()` and the page is visible.
+- The bridge is focused while **any** connected client reports `true`. A
+  client's report is discarded when it disconnects.
+- Reports are accepted only from loopback peers. A page on another machine
+  having focus says nothing about this machine's foreground application.
+- Payload: `specs/schemas/focus-report.schema.json`.
+
 ## Backpressure
 
 If a client cannot keep up with the spatial data rate:

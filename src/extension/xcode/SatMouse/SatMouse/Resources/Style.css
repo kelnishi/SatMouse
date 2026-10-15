@@ -29,3 +29,7 @@ h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #7f
 .client-row .ext-badge { font-size: 9px; padding: 1px 5px; border-radius: 6px; background: #2ecc71; color: #fff; font-weight: 600; }
 footer { text-align: center; padding-top: 12px; border-top: 1px solid #16213e; }
 footer .copyright { color: #7f8c8d; font-size: 11px; }
+.activation-toggle { display: flex; margin-left: auto; margin-right: 8px; border-radius: 6px; overflow: hidden; border: 1px solid #1a4a8a; }
+.activation-toggle button { font: inherit; font-size: 10px; padding: 2px 8px; background: transparent; color: #7f8c8d; border: none; cursor: pointer; }
+.activation-toggle button.selected { background: #3498db; color: #fff; }
+.activation-toggle button:disabled { cursor: default; }

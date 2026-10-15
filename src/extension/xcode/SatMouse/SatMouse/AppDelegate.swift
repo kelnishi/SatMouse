@@ -5,6 +5,9 @@ import SafariServices
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var serverProcess: Process?
+    /// Authorizes the status window's writes to the bridge (e.g. Rotatrix activation).
+    /// Generated per launch and shared only with the bridge process and the status window.
+    let controlToken = UUID().uuidString
     func applicationDidFinishLaunching(_ notification: Notification) {
         let execPath = Bundle.main.executablePath ?? ""
         if execPath.contains("/AppTranslocation/") {
@@ -72,7 +75,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let script = (res as NSString).appendingPathComponent("main.cjs")
         guard FileManager.default.fileExists(atPath: node), FileManager.default.fileExists(atPath: script) else { NSLog("[SatMouse] Node not found"); return }
         let p = Process(); p.executableURL = URL(fileURLWithPath: node); p.arguments = [script]
-        p.environment = ProcessInfo.processInfo.environment.merging(["SATMOUSE_CHILD":"1"], uniquingKeysWith:{_,n in n})
+        p.environment = ProcessInfo.processInfo.environment.merging(["SATMOUSE_CHILD":"1", "SATMOUSE_CONTROL_TOKEN":controlToken], uniquingKeysWith:{_,n in n})
         p.currentDirectoryURL = URL(fileURLWithPath: res)
         p.standardOutput = FileHandle.standardOutput; p.standardError = FileHandle.standardError
         p.terminationHandler = { [weak self] proc in NSLog("[SatMouse] Server exited (\(proc.terminationStatus))"); DispatchQueue.main.async { self?.serverProcess = nil; NSApp.terminate(nil) } }

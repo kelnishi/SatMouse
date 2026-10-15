@@ -8,4 +8,6 @@ export interface Transport {
   onButtonEvent: ((data: ButtonEvent) => void) | null;
   onClose: (() => void) | null;
   onError: ((error: Error) => void) | null;
+  /** Report page focus to the bridge (see docs/protocol.md) */
+  sendFocus(focused: boolean): void;
 }

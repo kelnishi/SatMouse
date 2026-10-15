@@ -81,6 +81,24 @@ channels:
     servers:
       - $ref: "#/servers/websocket"
 
+  focus:
+    address: /focus
+    description: |
+      Client → bridge focus reports. A client sends one when it connects and
+      whenever its page gains or loses focus. The bridge is focused while any
+      local client reports `focused: true`, and relays that to device servers
+      that route input by focus. Reports from non-loopback
+      peers are ignored.
+
+      Over WebTransport: length-prefixed JSON on a client-opened unidirectional stream.
+      Over WebSocket: a JSON text frame, on either subprotocol.
+    messages:
+      focusReport:
+        $ref: "#/components/messages/FocusReport"
+    servers:
+      - $ref: "#/servers/webtransport"
+      - $ref: "#/servers/websocket"
+
 operations:
   receiveSpatialData:
     action: receive
@@ -103,8 +121,22 @@ operations:
       $ref: "#/channels/deviceStatus"
     summary: Subscribe to device connect/disconnect events
 
+  sendFocus:
+    action: send
+    channel:
+      $ref: "#/channels/focus"
+    summary: Report whether the client's page has input focus
+
 components:
   messages:
+    FocusReport:
+      name: FocusReport
+      title: Focus Report
+      summary: Whether the client's page has input focus
+      contentType: application/json
+      payload:
+        $ref: "schemas/focus-report.schema.json"
+
     SpatialData:
       name: SpatialData
       title: Spatial Data

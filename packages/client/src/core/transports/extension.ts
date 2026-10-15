@@ -86,6 +86,10 @@ export class ExtensionAdapter implements Transport {
     });
   }
 
+  sendFocus(focused: boolean): void {
+    globalThis.postMessage({ target: "satmouse-extension", action: "focus", focused }, "*");
+  }
+
   close(): void {
     if (this.messageHandler) {
       globalThis.removeEventListener("message", this.messageHandler);

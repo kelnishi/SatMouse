@@ -3,6 +3,7 @@ import { fetchThingDescription, resolveEndpoints } from "./discovery.js";
 import { WebTransportAdapter } from "./transports/webtransport.js";
 import { WebSocketAdapter } from "./transports/websocket.js";
 import { ExtensionAdapter } from "./transports/extension.js";
+import { watchPageFocus } from "./focus.js";
 import type { Transport } from "./transports/transport.js";
 import type {
   ConnectOptions,
@@ -38,12 +39,13 @@ export function parseSatMouseUri(uri: string): { tdUrl: string; wsUrl: string; w
 }
 
 const DEFAULT_OPTIONS: Required<
-  Pick<ConnectOptions, "transports" | "reconnectDelay" | "maxRetries" | "wsSubprotocol">
+  Pick<ConnectOptions, "transports" | "reconnectDelay" | "maxRetries" | "wsSubprotocol" | "reportFocus">
 > = {
   transports: ["webtransport", "extension", "websocket"],
   reconnectDelay: 2000,
   maxRetries: 3,
   wsSubprotocol: "satmouse-json",
+  reportFocus: true,
 };
 
 /**
@@ -59,6 +61,7 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
   private intentionalClose = false;
   private deviceInfoUrl: string | null = null;
   private retryCount = 0;
+  private stopFocusWatch: (() => void) | null = null;
 
   private _state: ConnectionState = "disconnected";
   private _protocol: TransportProtocol = "none";
@@ -171,6 +174,7 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
   disconnect(): void {
     this.intentionalClose = true;
     this.clearReconnect();
+    this.unwatchFocus();
     this.transport?.close();
     this.transport = null;
     this.setState("disconnected", "none");
@@ -210,6 +214,7 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
     }
 
     adapter.onClose = () => {
+      this.unwatchFocus();
       this.transport = null;
       this.setState("disconnected", "none");
       if (!this.intentionalClose) this.scheduleReconnect();
@@ -226,12 +231,23 @@ export class SatMouseConnection extends TypedEmitter<SatMouseEvents> {
       this.transport = adapter;
       this.retryCount = 0;
       this.setState("connected", adapter.protocol);
+      // The bridge forgets a client's focus when it disconnects, so each new
+      // transport starts a fresh watch that reports the current state first.
+      if (this.options.reportFocus) {
+        this.unwatchFocus();
+        this.stopFocusWatch = watchPageFocus((focused) => adapter.sendFocus(focused));
+      }
       return true;
     } catch (err) {
       adapter.close();
       this.emit("error", err instanceof Error ? err : new Error(String(err)));
       return false;
     }
+  }
+
+  private unwatchFocus(): void {
+    this.stopFocusWatch?.();
+    this.stopFocusWatch = null;
   }
 
   private setState(state: ConnectionState, protocol: TransportProtocol): void {

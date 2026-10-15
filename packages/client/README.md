@@ -103,7 +103,7 @@ const manager = new InputManager({
 });
 ```
 
-Device classes: `"spacemouse"`, `"gamepad"`, `"dial"`, `"joystick"`, `"6dof"`, `"other"`
+Device classes: `"spacemouse"`, `"gamepad"`, `"dial"`, `"joystick"`, `"6dof"`, `"trackball"`, `"other"`
 
 ### Per-device overrides
 
@@ -189,6 +189,18 @@ new SatMouseConnection({ wsUrl: "ws://192.168.1.42:18945/spatial" });
 
 // Via satmouse:// URI
 new SatMouseConnection({ uri: "satmouse://connect?host=192.168.1.42" });
+```
+
+### Focus reporting
+
+Some device drivers send input only to the focused application. The bridge is
+never the foreground app itself, so each page reports whether it has focus and
+the bridge relays that. A page counts as
+focused while `document.hasFocus()` is true and it is visible. Reporting is on
+by default; turn it off for pages that should never claim a focus-routed device:
+
+```typescript
+new SatMouseConnection({ reportFocus: false });
 ```
 
 ## License

@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import type { SpatialData, ButtonEvent, DeviceInfo } from "../devices/types.js";
+import { isLoopbackAddress, type FocusTracker } from "../focus.js";
 
 const SUBPROTOCOL_JSON = "satmouse-json";
 const SUBPROTOCOL_BINARY = "satmouse-binary";
@@ -13,6 +14,8 @@ interface ClientSession {
   subprotocol: string;
   origin: string;
   userAgent: string;
+  /** Peer is on this machine; only local peers may report focus */
+  local: boolean;
 }
 
 /**
@@ -21,12 +24,17 @@ interface ClientSession {
  *
  * - satmouse-json:   JSON text frames (default)
  * - satmouse-binary: Same 24-byte binary format as WebTransport datagrams
+ *
+ * The only client→bridge message is a JSON text frame reporting page focus
+ * (`{"type":"focus","focused":true}`), accepted from local peers on either
+ * subprotocol. See docs/protocol.md.
  */
 export class SatMouseWebSocketServer {
   private wss: WebSocketServer | null = null;
   private clients = new Set<ClientSession>();
   private port: number;
   private getDevices: (() => DeviceInfo[]) | null = null;
+  private focus: FocusTracker | null = null;
 
   constructor(port: number) {
     this.port = port;
@@ -35,6 +43,11 @@ export class SatMouseWebSocketServer {
   /** Set a callback to get the current device list (sent to new clients on connect) */
   setDeviceProvider(fn: () => DeviceInfo[]): void {
     this.getDevices = fn;
+  }
+
+  /** Set the tracker that receives client focus reports */
+  setFocusTracker(focus: FocusTracker): void {
+    this.focus = focus;
   }
 
   start(httpServer?: any): void {
@@ -68,7 +81,8 @@ export class SatMouseWebSocketServer {
       // Capture and sanitize client info (truncate to prevent abuse)
       const origin = (req.headers.origin ?? "").toString().slice(0, 256);
       const userAgent = (req.headers["user-agent"] ?? "").toString().slice(0, 512);
-      const session: ClientSession = { ws, subprotocol, origin, userAgent };
+      const local = isLoopbackAddress(req.socket.remoteAddress);
+      const session: ClientSession = { ws, subprotocol, origin, userAgent, local };
       this.clients.add(session);
 
       console.log(`[WebSocket] Client connected (${subprotocol}, ${this.clients.size} total) from ${origin || "unknown"}`);
@@ -82,18 +96,22 @@ export class SatMouseWebSocketServer {
         }
       }
 
-      // Bridge is send-only — drop any data received from clients
-      ws.on("message", () => {
-        // Silently ignore client messages — bridge doesn't accept input over WebSocket
+      // Clients may only report focus; everything else is dropped
+      ws.on("message", (data, isBinary) => {
+        if (isBinary || !session.local || !this.focus) return;
+        const focused = parseFocusMessage(data.toString());
+        if (focused !== null) this.focus.set(session, focused);
       });
 
       ws.on("close", () => {
         this.clients.delete(session);
+        this.focus?.remove(session);
         console.log(`[WebSocket] Client disconnected (${this.clients.size} total)`);
       });
 
       ws.on("error", () => {
         this.clients.delete(session);
+        this.focus?.remove(session);
       });
     });
 
@@ -152,9 +170,20 @@ export class SatMouseWebSocketServer {
 
   stop(): void {
     this.wss?.close();
+    for (const client of this.clients) this.focus?.remove(client);
     this.clients.clear();
     console.log("[WebSocket] Stopped");
   }
+}
+
+/** Parse a `{"type":"focus","focused":boolean}` message; null if it is anything else */
+export function parseFocusMessage(text: string): boolean | null {
+  if (text.length > 256) return null;
+  try {
+    const msg = JSON.parse(text);
+    if (msg?.type === "focus" && typeof msg.focused === "boolean") return msg.focused;
+  } catch {}
+  return null;
 }
 
 /** Parse a user-agent string into a short browser name */

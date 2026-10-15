@@ -5,6 +5,9 @@ import { OrbionPlugin } from "./devices/plugins/orbion/index.js";
 import { CadMousePlugin } from "./devices/plugins/cadmouse/index.js";
 import { SpaceFoxPlugin } from "./devices/plugins/spacefox/index.js";
 import { HIDPlugin } from "./devices/plugins/hid/index.js";
+import { OpenAxisPlugin } from "./devices/plugins/openaxis/index.js";
+import { FocusTracker } from "./focus.js";
+import { SettingsStore } from "./settings.js";
 import { TransportManager } from "./transport/index.js";
 import { MDNSAdvertiser } from "./discovery/mdns.js";
 import { TDServer } from "./discovery/td-server.js";
@@ -60,6 +63,15 @@ async function main(): Promise<void> {
     console.error(`[DeviceManager] ${err.message}`);
   });
 
+  const settings = new SettingsStore(config.settingsPath);
+
+  // Focus reported by local web clients, relayed to focus-routed device servers
+  const focus = new FocusTracker();
+  focus.on("change", (focused) => {
+    console.log(`[Focus] ${focused ? "A local client has focus" : "No local client has focus"}`);
+    deviceManager.setHostFocus(focused);
+  });
+
   // Tray: child process skips (tray-wrapper handles it).
   // Dev mode creates tray in-process.
   if (!isChildProcess) {
@@ -87,6 +99,9 @@ async function main(): Promise<void> {
       deviceManager.registerPlugin(new CadMousePlugin());
     }
     deviceManager.registerPlugin(new HIDPlugin());
+    const openaxis = new OpenAxisPlugin(config.openaxisUrl, config.openaxisGain, settings.get().openaxisActivation, version);
+    settings.on("change", (s) => openaxis.setActivation(s.openaxisActivation));
+    deviceManager.registerPlugin(openaxis);
 
     await deviceManager.start(
       config.enabledPlugins.length ? config.enabledPlugins : undefined
@@ -142,12 +157,12 @@ async function main(): Promise<void> {
   }
 
   // HTTP server
-  const tdServer = new TDServer(config, deviceManager);
+  const tdServer = new TDServer(config, deviceManager, settings);
   const httpServer = tdServer.start();
 
   // Transport servers
   const transportManager = new TransportManager(config);
-  await transportManager.start(deviceManager, httpServer);
+  await transportManager.start(deviceManager, focus, httpServer);
 
   // Wire client status for /api/status
   tdServer.getClients = () => transportManager.getClientInfo();

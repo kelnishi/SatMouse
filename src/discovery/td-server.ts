@@ -1,17 +1,21 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
 import { readFileSync, existsSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import { networkInterfaces } from "node:os";
 import type { SatMouseConfig } from "../config.js";
 import type { DeviceManager } from "../devices/manager.js";
 import { resolveResource, isPathWithin } from "../resources.js";
+import { OPENAXIS_ACTIVATIONS, type SettingsStore } from "../settings.js";
+import { isLoopbackAddress } from "../focus.js";
 
 /**
  * HTTP + HTTPS server that serves:
  * - GET /td.json — WoT Thing Description (populated with runtime host/port)
  * - GET /api/device — Current device info (JSON)
+ * - GET/POST /api/openaxis — Rotatrix activation setting; POST requires the
+ *   control token from the launching app and a loopback peer
  * - GET /client/* — Reference web client (static files)
  *
  * HTTPS uses the same self-signed certs as WebTransport. This allows
@@ -24,13 +28,15 @@ export class TDServer {
   private config: SatMouseConfig;
   private deviceManager: DeviceManager;
   private certHashBase64: string | null = null;
+  private settings: SettingsStore;
 
   /** Called to get current connected client info for /api/status */
   getClients: (() => Array<{ transport: string; subprotocol?: string }>) | null = null;
 
-  constructor(config: SatMouseConfig, deviceManager: DeviceManager) {
+  constructor(config: SatMouseConfig, deviceManager: DeviceManager, settings: SettingsStore) {
     this.config = config;
     this.deviceManager = deviceManager;
+    this.settings = settings;
 
     // Compute cert hash for WebTransport serverCertificateHashes
     const certPath = join(config.certsDir, "cert.pem");
@@ -105,8 +111,8 @@ export class TDServer {
     } else {
       res.setHeader("Access-Control-Allow-Origin", "*");
     }
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-SatMouse-Control");
     res.setHeader("Access-Control-Allow-Private-Network", "true");
     res.setHeader("Access-Control-Max-Age", "86400");
     res.setHeader("Vary", "Origin");
@@ -172,6 +178,8 @@ export class TDServer {
       res.end(JSON.stringify({ clients }));
     } else if (url === "/api/device") {
       this.serveDeviceInfo(res);
+    } else if (url === "/api/openaxis") {
+      this.serveOpenAxisSettings(req, res);
     } else if (url.startsWith("/client")) {
       this.serveClient(url, res);
     } else {
@@ -272,6 +280,43 @@ export class TDServer {
    * POST /rtc/offer — Direct SDP signaling for browsers that can POST to localhost.
    * Body: SDP offer string. Response: SDP answer string.
    */
+  /**
+   * The only write endpoint. The server listens on all interfaces and any web
+   * page can send it requests, so a change needs the per-launch token the
+   * macOS app hands its status window, and must come from this machine.
+   */
+  private async serveOpenAxisSettings(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const reply = (status: number, body: object) => {
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(body));
+    };
+    const current = () => ({ activation: this.settings.get().openaxisActivation });
+
+    if (req.method === "GET") return reply(200, current());
+    if (req.method !== "POST") return reply(405, { error: "method not allowed" });
+
+    const token = this.config.controlToken;
+    const presented = req.headers["x-satmouse-control"];
+    const authorized = !!token && typeof presented === "string" && presented.length === token.length &&
+      timingSafeEqual(Buffer.from(presented), Buffer.from(token));
+    if (!authorized || !isLoopbackAddress(req.socket.remoteAddress)) {
+      return reply(403, { error: "forbidden" });
+    }
+
+    let activation: unknown;
+    try {
+      activation = JSON.parse(await this.readBody(req, 256))?.activation;
+    } catch {
+      return reply(400, { error: "invalid JSON" });
+    }
+    if (!OPENAXIS_ACTIVATIONS.includes(activation as any)) {
+      return reply(400, { error: `activation must be one of ${OPENAXIS_ACTIVATIONS.join(", ")}` });
+    }
+    this.settings.update({ openaxisActivation: activation as (typeof OPENAXIS_ACTIVATIONS)[number] });
+    console.log(`[Settings] Rotatrix activation: ${activation}`);
+    reply(200, current());
+  }
+
   private serveDeviceInfo(res: ServerResponse): void {
     const devices = this.deviceManager.getConnectedDevices();
     res.writeHead(200, { "Content-Type": "application/json" });
