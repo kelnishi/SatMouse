@@ -207,7 +207,7 @@ test("the activation endpoint needs the control token and persists the setting",
   const dir = mkdtempSync(join(tmpdir(), "satmouse-test-"));
   const settingsPath = join(dir, "settings.json");
   const settings = new SettingsStore(settingsPath);
-  const config = { certsDir: dir, controlToken: "secret-token" } as SatMouseConfig;
+  const config = { certsDir: dir, controlToken: "secret-token", rotatrixConfigPath: join(dir, "rotatrix.yaml") } as SatMouseConfig;
   const td = new TDServer(config, devices, settings);
   const server = createServer((req, res) => (td as any).handleRequest(req, res));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -219,7 +219,13 @@ test("the activation endpoint needs the control token and persists the setting",
   });
 
   try {
-    assert.deepEqual(await (await fetch(base)).json(), { activation: "hold" });
+    const initial = await (await fetch(base)).json();
+    assert.equal(initial.activation, "hold");
+    // No Rotatrix config yet, so the profile is missing and the import link is offered
+    assert.equal(initial.profile, "missing");
+    assert.match(initial.importUrl, /^rotatrix:\/\/import\?v=1&data=/);
+    const bundle = await fetch(base + "/profile.rotatrix");
+    assert.equal((await bundle.json()).format, "rotatrix-bundle");
     assert.equal((await post({ activation: "always" })).status, 403);
     assert.equal((await post({ activation: "always" }, "wrong-token!")).status, 403);
     assert.equal((await post({ activation: "sometimes" }, "secret-token")).status, 400);
@@ -227,7 +233,7 @@ test("the activation endpoint needs the control token and persists the setting",
     const changed = once(settings, "change");
     const res = await post({ activation: "always" }, "secret-token");
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { activation: "always" });
+    assert.equal((await res.json()).activation, "always");
     await changed;
     assert.equal(JSON.parse(readFileSync(settingsPath, "utf-8")).openaxisActivation, "always");
     assert.equal(new SettingsStore(settingsPath).get().openaxisActivation, "always");

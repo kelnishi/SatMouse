@@ -28,7 +28,7 @@ const IDLE_TIMEOUT_MS = 150;
  *
  * Rotatrix chooses its control profile from the active client's tags. The
  * bridge sends `app.satmouse` and `satmouse.activation.<hold|always>`, which
- * the SatMouse Rotatrix profile (docs/rotatrix/satmouse-profile.yaml) keys on.
+ * the SatMouse Rotatrix profile (rotatrix-profile.ts) keys on.
  */
 export class OpenAxisPlugin extends DevicePlugin {
   readonly id = "openaxis";

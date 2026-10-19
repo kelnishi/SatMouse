@@ -26,6 +26,9 @@ export interface SatMouseConfig {
   /** Scale from OpenAxis axis rates (rad/s) to SatMouse device units */
   openaxisGain: number;
 
+  /** Rotatrix's user config, read to tell whether the SatMouse profile is installed */
+  rotatrixConfigPath: string;
+
   /** Persisted user settings (JSON) */
   settingsPath: string;
 
@@ -61,6 +64,16 @@ function defaultDataDir(): string {
   return join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "SatMouse");
 }
 
+function defaultRotatrixConfigPath(): string {
+  if (process.platform === "win32") {
+    return join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "Rotatrix", "config.yaml");
+  }
+  if (process.platform === "darwin") {
+    return join(homedir(), "Library", "Application Support", "Rotatrix", "config.yaml");
+  }
+  return join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "Rotatrix", "config.yaml");
+}
+
 export function loadConfig(): SatMouseConfig {
   return {
     wtPort: parsePort(process.env.SATMOUSE_WT_PORT, 18946),
@@ -71,6 +84,7 @@ export function loadConfig(): SatMouseConfig {
     enabledPlugins: process.env.SATMOUSE_PLUGINS?.split(",") ?? [],
     openaxisUrl: process.env.SATMOUSE_OPENAXIS_URL ?? "ws://localhost:6607",
     openaxisGain: parseGain(process.env.SATMOUSE_OPENAXIS_GAIN, 50),
+    rotatrixConfigPath: resolve(process.env.SATMOUSE_ROTATRIX_CONFIG ?? defaultRotatrixConfigPath()),
     settingsPath: resolve(process.env.SATMOUSE_SETTINGS ?? join(defaultDataDir(), "settings.json")),
     controlToken: process.env.SATMOUSE_CONTROL_TOKEN || null,
   };

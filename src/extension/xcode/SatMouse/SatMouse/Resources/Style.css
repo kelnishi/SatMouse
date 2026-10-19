@@ -33,3 +33,6 @@ footer .copyright { color: #7f8c8d; font-size: 11px; }
 .activation-toggle button { font: inherit; font-size: 10px; padding: 2px 8px; background: transparent; color: #7f8c8d; border: none; cursor: pointer; }
 .activation-toggle button.selected { background: #3498db; color: #fff; }
 .activation-toggle button:disabled { cursor: default; }
+.profile-install { display: flex; align-items: center; gap: 6px; margin-left: auto; margin-right: 8px; font-size: 10px; color: #7f8c8d; }
+.profile-install button { font: inherit; padding: 2px 8px; background: #3498db; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+.profile-install button:disabled { background: transparent; color: #7f8c8d; border: 1px solid #1a4a8a; cursor: default; }

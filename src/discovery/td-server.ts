@@ -9,13 +9,20 @@ import type { DeviceManager } from "../devices/manager.js";
 import { resolveResource, isPathWithin } from "../resources.js";
 import { OPENAXIS_ACTIVATIONS, type SettingsStore } from "../settings.js";
 import { isLoopbackAddress } from "../focus.js";
+import {
+  RotatrixProfileProbe,
+  SATMOUSE_PROFILE_BUNDLE,
+  profileImportUrl,
+} from "../devices/plugins/openaxis/rotatrix-profile.js";
 
 /**
  * HTTP + HTTPS server that serves:
  * - GET /td.json — WoT Thing Description (populated with runtime host/port)
  * - GET /api/device — Current device info (JSON)
  * - GET/POST /api/openaxis — Rotatrix activation setting; POST requires the
- *   control token from the launching app and a loopback peer
+ *   control token from the launching app and a loopback peer. GET also
+ *   reports whether the SatMouse profile is installed, with its import link.
+ * - GET /api/openaxis/profile.rotatrix — the profile bundle, for manual import
  * - GET /client/* — Reference web client (static files)
  *
  * HTTPS uses the same self-signed certs as WebTransport. This allows
@@ -29,6 +36,8 @@ export class TDServer {
   private deviceManager: DeviceManager;
   private certHashBase64: string | null = null;
   private settings: SettingsStore;
+  private profileProbe: RotatrixProfileProbe;
+  private readonly importUrl = profileImportUrl();
 
   /** Called to get current connected client info for /api/status */
   getClients: (() => Array<{ transport: string; subprotocol?: string }>) | null = null;
@@ -37,6 +46,7 @@ export class TDServer {
     this.config = config;
     this.deviceManager = deviceManager;
     this.settings = settings;
+    this.profileProbe = new RotatrixProfileProbe(config.rotatrixConfigPath);
 
     // Compute cert hash for WebTransport serverCertificateHashes
     const certPath = join(config.certsDir, "cert.pem");
@@ -180,6 +190,12 @@ export class TDServer {
       this.serveDeviceInfo(res);
     } else if (url === "/api/openaxis") {
       this.serveOpenAxisSettings(req, res);
+    } else if (url === "/api/openaxis/profile.rotatrix") {
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Content-Disposition": 'attachment; filename="satmouse.rotatrix"',
+      });
+      res.end(JSON.stringify(SATMOUSE_PROFILE_BUNDLE, null, 2));
     } else if (url.startsWith("/client")) {
       this.serveClient(url, res);
     } else {
@@ -290,7 +306,11 @@ export class TDServer {
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify(body));
     };
-    const current = () => ({ activation: this.settings.get().openaxisActivation });
+    const current = () => ({
+      activation: this.settings.get().openaxisActivation,
+      profile: this.profileProbe.state(),
+      importUrl: this.importUrl,
+    });
 
     if (req.method === "GET") return reply(200, current());
     if (req.method !== "POST") return reply(405, { error: "method not allowed" });

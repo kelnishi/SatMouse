@@ -44,6 +44,12 @@ class ViewController: NSViewController, WKNavigationDelegate, WKScriptMessageHan
             NSWorkspace.shared.open(URL(string: "https://kelnishi.github.io/SatMouse")!)
         } else if body == "open-client" {
             NSWorkspace.shared.open(URL(string: "http://127.0.0.1:18945/client/")!)
+        } else if body.hasPrefix("open-url:") {
+            // Only the Rotatrix profile import; the web view can't open custom schemes itself
+            let link = String(body.dropFirst("open-url:".count))
+            if link.hasPrefix("rotatrix://import?"), let url = URL(string: link) {
+                NSWorkspace.shared.open(url)
+            }
         } else if body == "open-extension-settings" {
             SFSafariApplication.showPreferencesForExtension(
                 withIdentifier: extensionBundleIdentifier

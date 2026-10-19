@@ -5,7 +5,7 @@ import { EventEmitter } from "node:events";
 /**
  * How Rotatrix input reaches SatMouse pages, sent to Rotatrix as a tag
  * (satmouse.activation.<mode>) that the SatMouse Rotatrix profile keys on
- * (docs/rotatrix/satmouse-profile.yaml):
+ * (src/devices/plugins/openaxis/rotatrix-profile.ts):
  * - hold:   the ball is a mouse until the modifier key or button 4 is held
  * - always: the ball streams 3D input whenever a SatMouse page has focus;
  *           the modifier key or button 4 returns it to a mouse
