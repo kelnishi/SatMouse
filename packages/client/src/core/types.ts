@@ -63,7 +63,9 @@ export interface ThingDescription {
   id: string;
   base?: string;
   version?: { instance: string };
-  "satmouse:certHash"?: string;
+  /** WebTransport certificate hash. Bridges before 0.19.0 published it as
+   *  `satmouse:certHash`, for a certificate Chrome rejects. */
+  "satmouse:wtCertHash"?: string;
   properties?: {
     deviceInfo?: { forms: Array<{ href: string; op: string }> };
   };

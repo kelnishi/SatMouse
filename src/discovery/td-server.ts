@@ -218,8 +218,13 @@ export class TDServer {
       td.base = baseHttp;
       td.id = `urn:satmouse:bridge:${host}`;
 
+      // Published as wtCertHash, not certHash: clients before 0.19.0 read
+      // certHash and discard the device ID that binary frames now carry, so
+      // over WebTransport they would apply no per-device axis flips. Without
+      // the hash, Chrome refuses the self-signed certificate and those clients
+      // fall back to WebSocket JSON, which keeps the ID.
       if (this.certHashBase64) {
-        td["satmouse:certHash"] = this.certHashBase64;
+        td["satmouse:wtCertHash"] = this.certHashBase64;
       }
 
       td["satmouse:uri"] = `satmouse://connect?host=${host}&wsPort=${this.config.wsPort}&wtPort=${this.config.wtPort}`;
@@ -263,7 +268,7 @@ export class TDServer {
    * Used by the URI scheme tunnel when direct fetch is blocked (Safari LNA).
    *
    * GET /negotiate?origin=https://kelcite.app&callback=/satmouse-handshake
-   * → 302 https://kelcite.app/satmouse-handshake?ip=127.0.0.1&wsPort=18945&wtPort=18946&httpsPort=18947&certHash=...
+   * → 302 https://kelcite.app/satmouse-handshake?ip=127.0.0.1&wsPort=18945&wtPort=18946&httpsPort=18947&wtCertHash=...
    */
   private serveNegotiate(req: IncomingMessage, res: ServerResponse): void {
     const parsed = new URL(req.url ?? "/", "http://localhost");
@@ -283,7 +288,8 @@ export class TDServer {
       wsPort: String(this.config.wsPort),
       wtPort: String(this.config.wtPort),
       httpsPort: String(this.config.wsPort + 2),
-      ...(this.certHashBase64 && { certHash: this.certHashBase64 }),
+      // wtCertHash, not certHash, for the reason given in the TD
+      ...(this.certHashBase64 && { wtCertHash: this.certHashBase64 }),
       ...(challenge && { challenge }),
     });
 

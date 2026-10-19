@@ -23,7 +23,7 @@ export function resolveEndpoints(td: ThingDescription): ResolvedEndpoints {
   if (wtForm) {
     result.webtransport = {
       url: wtForm.href,
-      certHash: td["satmouse:certHash"],
+      certHash: td["satmouse:wtCertHash"],
     };
   }
 
