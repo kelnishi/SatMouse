@@ -55,14 +55,17 @@ function resolveEndpoints(td) {
 }
 
 // packages/client/src/core/decode.ts
+var utf8 = new TextDecoder();
 function decodeBinaryFrame(buffer) {
-  const len = buffer instanceof ArrayBuffer ? buffer.byteLength : buffer.byteLength;
+  const len = buffer.byteLength;
   if (len < 20) {
     throw new RangeError(`Spatial frame too short: expected \u226520 bytes, got ${len}`);
   }
   const ab = buffer instanceof ArrayBuffer ? buffer : buffer.buffer;
   const offset = buffer instanceof Uint8Array ? buffer.byteOffset : 0;
-  const view = new DataView(ab, offset);
+  const view = new DataView(ab, offset, len);
+  const idLength = len > 24 ? view.getUint8(24) : 0;
+  const deviceId = idLength > 0 && 25 + idLength <= len ? utf8.decode(new Uint8Array(ab, offset + 25, idLength)) : void 0;
   return {
     translation: {
       x: view.getInt16(8, true),
@@ -74,7 +77,8 @@ function decodeBinaryFrame(buffer) {
       y: view.getInt16(16, true),
       z: view.getInt16(18, true)
     },
-    timestamp: view.getFloat64(0, true)
+    timestamp: view.getFloat64(0, true),
+    ...deviceId && { deviceId }
   };
 }
 function decodeWsBinaryFrame(buffer) {
@@ -82,7 +86,7 @@ function decodeWsBinaryFrame(buffer) {
   if (bytes.length < 1) return null;
   const typePrefix = bytes[0];
   if (typePrefix === 1 && bytes.length >= 25) {
-    return { type: "spatialData", data: decodeBinaryFrame(bytes.subarray(1, 25)) };
+    return { type: "spatialData", data: decodeBinaryFrame(bytes.subarray(1)) };
   }
   if (typePrefix === 2) {
     const json = new TextDecoder().decode(bytes.subarray(1));
@@ -170,7 +174,13 @@ var WebTransportAdapter = class {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        this.onSpatialData?.(decodeBinaryFrame(value));
+        let data;
+        try {
+          data = decodeBinaryFrame(value);
+        } catch {
+          continue;
+        }
+        this.onSpatialData?.(data);
       }
     } catch {
     }

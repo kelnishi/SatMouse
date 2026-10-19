@@ -1,6 +1,7 @@
 import type { SpatialData, ButtonEvent } from "../devices/types.js";
 import { isLoopbackAddress, type FocusTracker } from "../focus.js";
 import { parseFocusMessage } from "./websocket.js";
+import { encodeSpatialBinary } from "./spatial-binary.js";
 
 const MAX_FOCUS_FRAME = 256;
 
@@ -173,18 +174,4 @@ export class WebTransportServer {
     this.server?.stopServer();
     console.log("[WebTransport] Stopped");
   }
-}
-
-/** Encode SpatialData to 24-byte binary buffer (see docs/protocol.md) */
-function encodeSpatialBinary(data: SpatialData): Uint8Array {
-  const buf = Buffer.allocUnsafe(24);
-  buf.writeDoubleLE(data.timestamp, 0);
-  buf.writeInt16LE(Math.round(data.translation.x), 8);
-  buf.writeInt16LE(Math.round(data.translation.y), 10);
-  buf.writeInt16LE(Math.round(data.translation.z), 12);
-  buf.writeInt16LE(Math.round(data.rotation.x), 14);
-  buf.writeInt16LE(Math.round(data.rotation.y), 16);
-  buf.writeInt16LE(Math.round(data.rotation.z), 18);
-  buf.writeUInt32LE(0, 20); // buttons not included in SpatialData; sent separately
-  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }

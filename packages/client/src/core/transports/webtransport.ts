@@ -77,7 +77,10 @@ export class WebTransportAdapter implements Transport {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        this.onSpatialData?.(decodeBinaryFrame(value));
+        // A malformed datagram is dropped; it must not end the read loop
+        let data;
+        try { data = decodeBinaryFrame(value); } catch { continue; }
+        this.onSpatialData?.(data);
       }
     } catch {
       // Transport closed

@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import type { SpatialData, ButtonEvent, DeviceInfo } from "../devices/types.js";
 import { isLoopbackAddress, type FocusTracker } from "../focus.js";
+import { encodeSpatialBinary } from "./spatial-binary.js";
 
 const SUBPROTOCOL_JSON = "satmouse-json";
 const SUBPROTOCOL_BINARY = "satmouse-binary";
@@ -23,7 +24,7 @@ interface ClientSession {
  * is unavailable). Supports two subprotocols:
  *
  * - satmouse-json:   JSON text frames (default)
- * - satmouse-binary: Same 24-byte binary format as WebTransport datagrams
+ * - satmouse-binary: Same binary frames as WebTransport datagrams
  *
  * The only client→bridge message is a JSON text frame reporting page focus
  * (`{"type":"focus","focused":true}`), accepted from local peers on either
@@ -124,7 +125,7 @@ export class SatMouseWebSocketServer {
 
       try {
         if (client.subprotocol === SUBPROTOCOL_BINARY) {
-          client.ws.send(encodeSpatialBinary(data));
+          client.ws.send(encodeSpatialBinary(data, 0x01));
         } else {
           client.ws.send(JSON.stringify({ type: "spatialData", data }));
         }
@@ -196,24 +197,4 @@ function parseBrowser(ua: string): string {
   if (ua.includes("Firefox/")) return "Firefox";
   if (ua.includes("node")) return "Node.js";
   return "Unknown";
-}
-
-/** Clamp a number to int16 range, reject NaN/Infinity */
-function clampInt16(v: number): number {
-  if (!Number.isFinite(v)) return 0;
-  return Math.max(-32768, Math.min(32767, Math.round(v)));
-}
-
-function encodeSpatialBinary(data: SpatialData): Buffer {
-  const buf = Buffer.allocUnsafe(25);
-  buf.writeUInt8(0x01, 0); // type prefix: spatial data
-  buf.writeDoubleLE(Number.isFinite(data.timestamp) ? data.timestamp : 0, 1);
-  buf.writeInt16LE(clampInt16(data.translation.x), 9);
-  buf.writeInt16LE(clampInt16(data.translation.y), 11);
-  buf.writeInt16LE(clampInt16(data.translation.z), 13);
-  buf.writeInt16LE(clampInt16(data.rotation.x), 15);
-  buf.writeInt16LE(clampInt16(data.rotation.y), 17);
-  buf.writeInt16LE(clampInt16(data.rotation.z), 19);
-  buf.writeUInt32LE(0, 21);
-  return buf;
 }
