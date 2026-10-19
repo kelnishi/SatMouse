@@ -12,6 +12,7 @@ export interface DeviceManagerEvents extends DevicePluginEvents {}
 export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
   private plugins = new Map<string, DevicePlugin>();
   private activePlugins = new Set<string>();
+  private hostFocused = false;
 
   registerPlugin(plugin: DevicePlugin): void {
     if (this.plugins.has(plugin.id)) {
@@ -110,6 +111,12 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     }
   }
 
+  /** Forward the bridge's aggregate client focus to every plugin */
+  setHostFocus(focused: boolean): void {
+    this.hostFocused = focused;
+    for (const plugin of this.plugins.values()) plugin.setHostFocus(focused);
+  }
+
   getConnectedDevices(): DeviceInfo[] {
     const devices: DeviceInfo[] = [];
     for (const id of this.activePlugins) {
@@ -127,5 +134,6 @@ export class DeviceManager extends EventEmitter<DeviceManagerEvents> {
     plugin.on("deviceConnected", (info: DeviceInfo) => this.emit("deviceConnected", info));
     plugin.on("deviceDisconnected", (info: DeviceInfo) => this.emit("deviceDisconnected", info));
     plugin.on("error", (err: Error) => this.emit("error", err));
+    plugin.setHostFocus(this.hostFocused);
   }
 }

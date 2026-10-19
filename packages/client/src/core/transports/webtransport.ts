@@ -45,6 +45,25 @@ export class WebTransportAdapter implements Transport {
       .catch(() => this.onClose?.());
   }
 
+  /** One client-opened unidirectional stream per report, length-prefixed JSON */
+  sendFocus(focused: boolean): void {
+    if (!this.transport) return;
+    const payload = new TextEncoder().encode(JSON.stringify({ type: "focus", focused }));
+    const frame = new Uint8Array(4 + payload.length);
+    new DataView(frame.buffer).setUint32(0, payload.length, true);
+    frame.set(payload, 4);
+    this.transport
+      .createUnidirectionalStream()
+      .then(async (stream: any) => {
+        const writer = stream.getWriter();
+        await writer.write(frame);
+        await writer.close();
+      })
+      .catch(() => {
+        // Transport closed
+      });
+  }
+
   close(): void {
     try {
       this.transport?.close();
@@ -58,7 +77,10 @@ export class WebTransportAdapter implements Transport {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        this.onSpatialData?.(decodeBinaryFrame(value));
+        // A malformed datagram is dropped; it must not end the read loop
+        let data;
+        try { data = decodeBinaryFrame(value); } catch { continue; }
+        this.onSpatialData?.(data);
       }
     } catch {
       // Transport closed

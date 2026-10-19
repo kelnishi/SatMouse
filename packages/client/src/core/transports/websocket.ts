@@ -56,6 +56,13 @@ export class WebSocketAdapter implements Transport {
     });
   }
 
+  sendFocus(focused: boolean): void {
+    if (this.ws?.readyState !== globalThis.WebSocket.OPEN) return;
+    try {
+      this.ws.send(JSON.stringify({ type: "focus", focused }));
+    } catch {}
+  }
+
   close(): void {
     try {
       this.ws?.close();

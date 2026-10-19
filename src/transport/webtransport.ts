@@ -1,10 +1,17 @@
 import type { SpatialData, ButtonEvent } from "../devices/types.js";
+import { isLoopbackAddress, type FocusTracker } from "../focus.js";
+import { parseFocusMessage } from "./websocket.js";
+import { encodeSpatialBinary } from "./spatial-binary.js";
+
+const MAX_FOCUS_FRAME = 256;
 
 /**
  * WebTransport server for streaming spatial data over HTTP/3 QUIC.
  *
  * - Spatial data: sent as binary datagrams (24 bytes, unreliable/unordered)
  * - Button events: sent on reliable unidirectional streams (JSON)
+ * - Focus reports: received on client-opened unidirectional streams, same
+ *   length-prefixed JSON framing, accepted from local peers only
  *
  * Requires TLS — uses self-signed certificates for local development.
  */
@@ -14,6 +21,7 @@ export class WebTransportServer {
   private port: number;
   private certPath: string;
   private keyPath: string;
+  private focus: FocusTracker | null = null;
 
   constructor(port: number, certPath: string, keyPath: string) {
     this.port = port;
@@ -21,11 +29,14 @@ export class WebTransportServer {
     this.keyPath = keyPath;
   }
 
+  /** Set the tracker that receives client focus reports */
+  setFocusTracker(focus: FocusTracker): void {
+    this.focus = focus;
+  }
+
   async start(): Promise<void> {
     const { readFileSync } = await import("node:fs");
-    const { Http3Server } = await import("@anthropic-ai/sdk" as any).catch(
-      () => import("@fails-components/webtransport")
-    );
+    const { Http3Server } = await import("@fails-components/webtransport");
 
     const cert = readFileSync(this.certPath);
     const key = readFileSync(this.keyPath);
@@ -59,18 +70,63 @@ export class WebTransportServer {
         this.sessions.add(session);
         console.log(`[WebTransport] Client connected (${this.sessions.size} total)`);
 
+        if (isLoopbackAddress(session.peerAddress)) this.readFocusStreams(session);
+
         session.closed
           .then(() => {
             this.sessions.delete(session);
+            this.focus?.remove(session);
             console.log(`[WebTransport] Client disconnected (${this.sessions.size} total)`);
           })
           .catch(() => {
             this.sessions.delete(session);
+            this.focus?.remove(session);
           });
       }
     } catch (err) {
       console.error("[WebTransport] Session accept error:", err);
     }
+  }
+
+  /** Each client-opened stream carries one length-prefixed JSON focus report */
+  private async readFocusStreams(session: any): Promise<void> {
+    const reader = session.incomingUnidirectionalStreams.getReader();
+    try {
+      while (true) {
+        const { value: stream, done } = await reader.read();
+        if (done) break;
+        this.readFocusStream(session, stream);
+      }
+    } catch {
+      // Session closed
+    }
+  }
+
+  private async readFocusStream(session: any, stream: any): Promise<void> {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        length += value.length;
+        if (length > 4 + MAX_FOCUS_FRAME) {
+          reader.cancel().catch(() => {});
+          return;
+        }
+        chunks.push(value);
+      }
+    } catch {
+      return;
+    }
+
+    const buf = Buffer.concat(chunks);
+    if (buf.length < 4) return;
+    const payloadLength = buf.readUInt32LE(0);
+    if (payloadLength !== buf.length - 4) return;
+    const focused = parseFocusMessage(buf.subarray(4).toString("utf-8"));
+    if (focused !== null && this.sessions.has(session)) this.focus?.set(session, focused);
   }
 
   broadcastSpatialData(data: SpatialData): void {
@@ -109,6 +165,7 @@ export class WebTransportServer {
 
   stop(): void {
     for (const session of this.sessions) {
+      this.focus?.remove(session);
       try {
         session.close();
       } catch {}
@@ -117,18 +174,4 @@ export class WebTransportServer {
     this.server?.stopServer();
     console.log("[WebTransport] Stopped");
   }
-}
-
-/** Encode SpatialData to 24-byte binary buffer (see docs/protocol.md) */
-function encodeSpatialBinary(data: SpatialData): Uint8Array {
-  const buf = Buffer.allocUnsafe(24);
-  buf.writeDoubleLE(data.timestamp, 0);
-  buf.writeInt16LE(Math.round(data.translation.x), 8);
-  buf.writeInt16LE(Math.round(data.translation.y), 10);
-  buf.writeInt16LE(Math.round(data.translation.z), 12);
-  buf.writeInt16LE(Math.round(data.rotation.x), 14);
-  buf.writeInt16LE(Math.round(data.rotation.y), 16);
-  buf.writeInt16LE(Math.round(data.rotation.z), 18);
-  buf.writeUInt32LE(0, 20); // buttons not included in SpatialData; sent separately
-  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }

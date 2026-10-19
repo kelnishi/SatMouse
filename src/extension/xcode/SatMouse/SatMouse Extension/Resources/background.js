@@ -6,6 +6,19 @@ var api = (typeof browser !== "undefined") ? browser : chrome;
 var ws = null;
 var subscribers = new Map();
 var portId = 0;
+// Per-tab focus reports. The bridge sees one connection for all tabs, so it
+// gets the OR: focused while any subscribed tab reports focus.
+var tabFocus = new Map();
+var sentFocus = null;
+
+function sendFocus() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  var focused = false;
+  tabFocus.forEach(function(value) { if (value) focused = true; });
+  if (focused === sentFocus) return;
+  sentFocus = focused;
+  ws.send(JSON.stringify({ type: "focus", focused: focused }));
+}
 
 function ensureWebSocket() {
   if (ws && ws.readyState === WebSocket.OPEN) return;
@@ -20,6 +33,8 @@ function ensureWebSocket() {
 
   ws.onopen = function() {
     console.log("[SatMouse] Connected to bridge");
+    sentFocus = null;
+    sendFocus();
     broadcast({ type: "bridgeConnected" });
   };
 
@@ -72,6 +87,10 @@ api.runtime.onConnect.addListener(function(port) {
         port.postMessage({ type: "connected" });
       }
     }
+    if (msg.action === "focus") {
+      tabFocus.set(id, msg.focused === true);
+      sendFocus();
+    }
     if (msg.action === "fetchDevices") {
       fetch("http://127.0.0.1:18945/api/device")
         .then(function(r) { return r.json(); })
@@ -86,6 +105,8 @@ api.runtime.onConnect.addListener(function(port) {
 
   port.onDisconnect.addListener(function() {
     subscribers.delete(id);
+    tabFocus.delete(id);
+    sendFocus();
     console.log("[SatMouse] Page disconnected (" + subscribers.size + " remaining)");
     if (subscribers.size === 0 && ws) {
       ws.close();

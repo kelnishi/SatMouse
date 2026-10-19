@@ -41,14 +41,19 @@ Offset  Size   Type       Field
 16      2      int16      rotation.y (LE)
 18      2      int16      rotation.z (LE)
 20      4      uint32     buttons bitmask (LE)
+24      1      uint8      device ID length N (optional)
+25      N      UTF-8      device ID (optional)
 ──────  ────
-Total   24 bytes
+Total   24 bytes, or 25 + N with the device ID
 ```
 
 - **timestamp**: `performance.now() * 1000` at capture time.
 - **translation/rotation**: Device-native int16 values (typically -350 to 350
   for SpaceMouse). The range depends on the device and driver settings.
 - **buttons**: Bitmask of all button states. Bit N = 1 means button N is pressed.
+- **device ID**: The source device (`cnx-c635`, `hid-054c-5c4`), which clients
+  need to apply per-device axis routes and scales. Bridges before 0.19.0 send
+  only the first 24 bytes, and clients written for that format ignore the rest.
 
 This matches the `ConnexionDeviceState` struct from the 3DConnexion SDK,
 enabling zero-copy encoding on macOS.
@@ -77,9 +82,9 @@ WebSocket supports two subprotocols, negotiated via `Sec-WebSocket-Protocol`:
 
 ### `satmouse-binary`
 
-Same 24-byte binary frames as WebTransport datagrams.
+Same binary frames as WebTransport datagrams, device ID included.
 Button events are separate binary messages with a 1-byte type prefix:
-- `0x01` + 24-byte spatial data
+- `0x01` + spatial data frame
 - `0x02` + JSON button event
 
 ### `satmouse-json` (default)
@@ -107,6 +112,33 @@ All messages are JSON text frames:
   }
 }
 ```
+
+## Client → Bridge: Focus Reports
+
+The bridge streams to clients and accepts one message type back: a report of
+whether the client's page has input focus. Some device servers send input only
+to a focused application, and the bridge is never the foreground application
+itself, so it relays its clients' focus instead.
+
+```json
+{ "type": "focus", "focused": true }
+```
+
+| Transport | Framing |
+|---|---|
+| WebSocket | JSON text frame, on either subprotocol |
+| WebTransport | Client-opened unidirectional stream carrying one `[uint32 LE length][UTF-8 JSON]` frame |
+| Safari extension | `postMessage({ target: "satmouse-extension", action: "focus", focused })`; the background script relays the OR of its tabs over its WebSocket |
+
+Rules:
+
+- A client sends its state on connect and on every change. `focused` is true
+  while `document.hasFocus()` and the page is visible.
+- The bridge is focused while **any** connected client reports `true`. A
+  client's report is discarded when it disconnects.
+- Reports are accepted only from loopback peers. A page on another machine
+  having focus says nothing about this machine's foreground application.
+- Payload: `specs/schemas/focus-report.schema.json`.
 
 ## Backpressure
 

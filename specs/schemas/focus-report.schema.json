@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://satmouse.dev/schemas/focus-report.json",
+  "title": "FocusReport",
+  "description": "Client → bridge report of whether the page consuming SatMouse input has focus. The bridge relays the aggregate to device servers that route input by focus. Accepted from loopback peers only.",
+  "type": "object",
+  "properties": {
+    "type": { "const": "focus" },
+    "focused": {
+      "type": "boolean",
+      "description": "True while the page's document has focus and is visible"
+    }
+  },
+  "required": ["type", "focused"],
+  "additionalProperties": false
+}

@@ -40,7 +40,7 @@ function resolveEndpoints(td) {
   if (wtForm) {
     result.webtransport = {
       url: wtForm.href,
-      certHash: td["satmouse:certHash"]
+      certHash: td["satmouse:wtCertHash"]
     };
   }
   const wsForm = spatialForms.find((f) => f.subprotocol === "websocket");
@@ -55,14 +55,17 @@ function resolveEndpoints(td) {
 }
 
 // packages/client/src/core/decode.ts
+var utf8 = new TextDecoder();
 function decodeBinaryFrame(buffer) {
-  const len = buffer instanceof ArrayBuffer ? buffer.byteLength : buffer.byteLength;
+  const len = buffer.byteLength;
   if (len < 20) {
     throw new RangeError(`Spatial frame too short: expected \u226520 bytes, got ${len}`);
   }
   const ab = buffer instanceof ArrayBuffer ? buffer : buffer.buffer;
   const offset = buffer instanceof Uint8Array ? buffer.byteOffset : 0;
-  const view = new DataView(ab, offset);
+  const view = new DataView(ab, offset, len);
+  const idLength = len > 24 ? view.getUint8(24) : 0;
+  const deviceId = idLength > 0 && 25 + idLength <= len ? utf8.decode(new Uint8Array(ab, offset + 25, idLength)) : void 0;
   return {
     translation: {
       x: view.getInt16(8, true),
@@ -74,7 +77,8 @@ function decodeBinaryFrame(buffer) {
       y: view.getInt16(16, true),
       z: view.getInt16(18, true)
     },
-    timestamp: view.getFloat64(0, true)
+    timestamp: view.getFloat64(0, true),
+    ...deviceId && { deviceId }
   };
 }
 function decodeWsBinaryFrame(buffer) {
@@ -82,7 +86,7 @@ function decodeWsBinaryFrame(buffer) {
   if (bytes.length < 1) return null;
   const typePrefix = bytes[0];
   if (typePrefix === 1 && bytes.length >= 25) {
-    return { type: "spatialData", data: decodeBinaryFrame(bytes.subarray(1, 25)) };
+    return { type: "spatialData", data: decodeBinaryFrame(bytes.subarray(1)) };
   }
   if (typePrefix === 2) {
     const json = new TextDecoder().decode(bytes.subarray(1));
@@ -143,6 +147,20 @@ var WebTransportAdapter = class {
     this.readStreams();
     this.transport.closed.then(() => this.onClose?.()).catch(() => this.onClose?.());
   }
+  /** One client-opened unidirectional stream per report, length-prefixed JSON */
+  sendFocus(focused) {
+    if (!this.transport) return;
+    const payload = new TextEncoder().encode(JSON.stringify({ type: "focus", focused }));
+    const frame = new Uint8Array(4 + payload.length);
+    new DataView(frame.buffer).setUint32(0, payload.length, true);
+    frame.set(payload, 4);
+    this.transport.createUnidirectionalStream().then(async (stream) => {
+      const writer = stream.getWriter();
+      await writer.write(frame);
+      await writer.close();
+    }).catch(() => {
+    });
+  }
   close() {
     try {
       this.transport?.close();
@@ -156,7 +174,13 @@ var WebTransportAdapter = class {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        this.onSpatialData?.(decodeBinaryFrame(value));
+        let data;
+        try {
+          data = decodeBinaryFrame(value);
+        } catch {
+          continue;
+        }
+        this.onSpatialData?.(data);
       }
     } catch {
     }
@@ -238,6 +262,13 @@ var WebSocketAdapter = class {
       this.ws.onclose = () => this.onClose?.();
     });
   }
+  sendFocus(focused) {
+    if (this.ws?.readyState !== globalThis.WebSocket.OPEN) return;
+    try {
+      this.ws.send(JSON.stringify({ type: "focus", focused }));
+    } catch {
+    }
+  }
   close() {
     try {
       this.ws?.close();
@@ -256,6 +287,7 @@ var ExtensionAdapter = class {
   onClose = null;
   onError = null;
   messageHandler = null;
+  pendingDeviceFetch = null;
   static isAvailable() {
     return !!globalThis.__satmouseExtensionAvailable;
   }
@@ -287,10 +319,29 @@ var ExtensionAdapter = class {
         if (msg.type === "deviceStatus" && msg.data) {
           this.onDeviceStatus?.(msg.data.event, msg.data.device);
         }
+        if (msg.type === "deviceList" && this.pendingDeviceFetch) {
+          this.pendingDeviceFetch(Array.isArray(msg.data) ? msg.data : []);
+          this.pendingDeviceFetch = null;
+        }
       };
       globalThis.addEventListener("message", this.messageHandler);
       globalThis.postMessage({ target: "satmouse-extension", action: "connect" }, "*");
     });
+  }
+  fetchDeviceInfo() {
+    return new Promise((resolve) => {
+      this.pendingDeviceFetch = resolve;
+      globalThis.postMessage({ target: "satmouse-extension", action: "fetchDevices" }, "*");
+      setTimeout(() => {
+        if (this.pendingDeviceFetch) {
+          this.pendingDeviceFetch = null;
+          resolve([]);
+        }
+      }, 3e3);
+    });
+  }
+  sendFocus(focused) {
+    globalThis.postMessage({ target: "satmouse-extension", action: "focus", focused }, "*");
   }
   close() {
     if (this.messageHandler) {
@@ -300,6 +351,39 @@ var ExtensionAdapter = class {
     globalThis.postMessage({ target: "satmouse-extension", action: "disconnect" }, "*");
   }
 };
+
+// packages/client/src/core/focus.ts
+var SETTLE_MS = 50;
+function watchPageFocus(onChange) {
+  const doc = globalThis.document;
+  const win = globalThis;
+  if (!doc || typeof doc.hasFocus !== "function" || typeof win.addEventListener !== "function") {
+    return () => {
+    };
+  }
+  let last = null;
+  let timer = null;
+  const check = () => {
+    timer = null;
+    const focused = doc.hasFocus() && doc.visibilityState !== "hidden";
+    if (focused === last) return;
+    last = focused;
+    onChange(focused);
+  };
+  const schedule = () => {
+    if (timer === null) timer = setTimeout(check, SETTLE_MS);
+  };
+  win.addEventListener("focus", schedule);
+  win.addEventListener("blur", schedule);
+  doc.addEventListener("visibilitychange", schedule);
+  check();
+  return () => {
+    win.removeEventListener("focus", schedule);
+    win.removeEventListener("blur", schedule);
+    doc.removeEventListener("visibilitychange", schedule);
+    if (timer !== null) clearTimeout(timer);
+  };
+}
 
 // packages/client/src/core/connection.ts
 function parseSatMouseUri(uri) {
@@ -317,7 +401,8 @@ var DEFAULT_OPTIONS = {
   transports: ["webtransport", "extension", "websocket"],
   reconnectDelay: 2e3,
   maxRetries: 3,
-  wsSubprotocol: "satmouse-json"
+  wsSubprotocol: "satmouse-json",
+  reportFocus: true
 };
 var SatMouseConnection = class extends TypedEmitter {
   options;
@@ -326,6 +411,7 @@ var SatMouseConnection = class extends TypedEmitter {
   intentionalClose = false;
   deviceInfoUrl = null;
   retryCount = 0;
+  stopFocusWatch = null;
   _state = "disconnected";
   _protocol = "none";
   get state() {
@@ -353,8 +439,8 @@ var SatMouseConnection = class extends TypedEmitter {
     if (!wtUrl && !wsUrl) {
       const tdUrl = this.options.tdUrl;
       const tdUrls = tdUrl ? [tdUrl] : [
-        "https://127.0.0.1:18947/td.json",
-        "http://127.0.0.1:18945/td.json"
+        "http://127.0.0.1:18945/td.json",
+        "https://127.0.0.1:18947/td.json"
       ];
       let resolved = false;
       for (const url of tdUrls) {
@@ -372,8 +458,7 @@ var SatMouseConnection = class extends TypedEmitter {
       }
       if (!resolved) {
         this.emit("error", new Error("Failed to fetch Thing Description"));
-        const isSecurePage = typeof globalThis.location !== "undefined" && globalThis.location.protocol === "https:";
-        wsUrl = isSecurePage ? "wss://127.0.0.1:18947/spatial" : "ws://127.0.0.1:18945/spatial";
+        wsUrl = "ws://127.0.0.1:18945/spatial";
       }
     }
     for (const proto of this.options.transports) {
@@ -416,16 +501,26 @@ var SatMouseConnection = class extends TypedEmitter {
   disconnect() {
     this.intentionalClose = true;
     this.clearReconnect();
+    this.unwatchFocus();
     this.transport?.close();
     this.transport = null;
     this.setState("disconnected", "none");
   }
   async fetchDeviceInfo() {
-    if (!this.deviceInfoUrl) return [];
-    const res = await globalThis.fetch(this.deviceInfoUrl);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.devices ?? [];
+    if (this.deviceInfoUrl) {
+      try {
+        const res = await globalThis.fetch(this.deviceInfoUrl);
+        if (res.ok) {
+          const data = await res.json();
+          return data.devices ?? [];
+        }
+      } catch {
+      }
+    }
+    if (this.transport && "fetchDeviceInfo" in this.transport) {
+      return this.transport.fetchDeviceInfo();
+    }
+    return [];
   }
   async tryTransport(adapter) {
     adapter.onSpatialData = (data) => this.emit("spatialData", data);
@@ -437,6 +532,7 @@ var SatMouseConnection = class extends TypedEmitter {
       };
     }
     adapter.onClose = () => {
+      this.unwatchFocus();
       this.transport = null;
       this.setState("disconnected", "none");
       if (!this.intentionalClose) this.scheduleReconnect();
@@ -451,12 +547,20 @@ var SatMouseConnection = class extends TypedEmitter {
       this.transport = adapter;
       this.retryCount = 0;
       this.setState("connected", adapter.protocol);
+      if (this.options.reportFocus) {
+        this.unwatchFocus();
+        this.stopFocusWatch = watchPageFocus((focused) => adapter.sendFocus(focused));
+      }
       return true;
     } catch (err) {
       adapter.close();
       this.emit("error", err instanceof Error ? err : new Error(String(err)));
       return false;
     }
+  }
+  unwatchFocus() {
+    this.stopFocusWatch?.();
+    this.stopFocusWatch = null;
   }
   setState(state, protocol) {
     if (this._state === state && this._protocol === protocol) return;
@@ -562,8 +666,9 @@ var DEFAULT_CONFIG = {
   dominant: false,
   lockPosition: false,
   lockRotation: false,
-  devices: {
-    "cnx-*": {
+  devices: {},
+  deviceClasses: {
+    spacemouse: {
       routes: [
         { source: "tx", target: "tx" },
         { source: "ty", target: "ty", flip: true },
@@ -571,17 +676,6 @@ var DEFAULT_CONFIG = {
         { source: "rx", target: "rx" },
         { source: "ry", target: "ry", flip: true },
         { source: "rz", target: "rz", flip: true }
-      ]
-    },
-    // PlayStation: L2 (ty) → TY, R2 (ry) → TY flipped (push-pull)
-    "hid-54c-*": {
-      routes: [
-        { source: "tx", target: "tx" },
-        { source: "tz", target: "tz" },
-        { source: "rz", target: "rz" },
-        { source: "rx", target: "rx" },
-        { source: "ty", target: "ty" },
-        { source: "ry", target: "ty", flip: true }
       ]
     }
   }
@@ -592,16 +686,22 @@ function mergeConfig(base, partial) {
     ...partial,
     routes: partial.routes ?? [...base.routes],
     buttonRoutes: partial.buttonRoutes ?? [...base.buttonRoutes],
-    devices: { ...base.devices }
+    devices: { ...base.devices },
+    deviceClasses: { ...base.deviceClasses }
   };
   if (partial.devices) {
     for (const [key, devCfg] of Object.entries(partial.devices)) {
       merged.devices[key] = { ...merged.devices[key], ...devCfg };
     }
   }
+  if (partial.deviceClasses) {
+    for (const [key, classCfg] of Object.entries(partial.deviceClasses)) {
+      if (classCfg) merged.deviceClasses[key] = { ...merged.deviceClasses[key], ...classCfg };
+    }
+  }
   return merged;
 }
-function resolveDeviceConfig(config, deviceId) {
+function resolveDeviceConfig(config, deviceId, deviceClass) {
   let deviceOverride;
   if (config.devices[deviceId]) {
     deviceOverride = config.devices[deviceId];
@@ -612,6 +712,9 @@ function resolveDeviceConfig(config, deviceId) {
         break;
       }
     }
+  }
+  if (!deviceOverride && deviceClass && config.deviceClasses[deviceClass]) {
+    deviceOverride = config.deviceClasses[deviceClass];
   }
   if (!deviceOverride) return config;
   return {
@@ -728,7 +831,8 @@ var InputManager = class extends TypedEmitter {
     }));
   }
   getDeviceConfig(deviceId) {
-    const resolved = resolveDeviceConfig(this._config, deviceId);
+    const device = this.knownDevices.get(deviceId);
+    const resolved = resolveDeviceConfig(this._config, deviceId, device?.deviceClass);
     return {
       routes: resolved.routes,
       buttonRoutes: resolved.buttonRoutes,
@@ -832,7 +936,8 @@ var InputManager = class extends TypedEmitter {
   }
   /** Per-device: deadZone → dominant → routes (flip + scale + remap in one pass) */
   processPerDevice(raw, deviceId) {
-    const cfg = resolveDeviceConfig(this._config, deviceId);
+    const device = this.knownDevices.get(deviceId);
+    const cfg = resolveDeviceConfig(this._config, deviceId, device?.deviceClass);
     let data = raw;
     if (cfg.deadZone > 0) {
       const dz = (v) => Math.abs(v) < cfg.deadZone ? 0 : v;
@@ -852,18 +957,18 @@ var InputManager = class extends TypedEmitter {
         { g: "r", k: "z", v: Math.abs(data.rotation.z) }
       ];
       const max = axes.reduce((a, b) => b.v > a.v ? b : a);
-      const t = { x: 0, y: 0, z: 0 };
+      const t2 = { x: 0, y: 0, z: 0 };
       const r = { x: 0, y: 0, z: 0 };
-      if (max.g === "t") t[max.k] = data.translation[max.k];
+      if (max.g === "t") t2[max.k] = data.translation[max.k];
       else r[max.k] = data.rotation[max.k];
-      data = { ...data, translation: t, rotation: r };
+      data = { ...data, translation: t2, rotation: r };
     }
-    const device = this.knownDevices.get(deviceId);
     const deviceRoutes = this.resolveRoutes(deviceId, device);
     data = applyRoutes(data, deviceRoutes, cfg.translateScale, cfg.rotateScale, cfg.wScale);
     return data;
   }
-  /** Get the effective routes for a device: device config override > device axes metadata > global default */
+  /** Get the effective routes for a device:
+   *  device ID override > pattern match > deviceClass > device axes metadata > global default */
   resolveRoutes(deviceId, device) {
     const devCfg = this._config.devices[deviceId];
     if (devCfg?.routes && Array.isArray(devCfg.routes)) return devCfg.routes;
@@ -871,6 +976,10 @@ var InputManager = class extends TypedEmitter {
       if (pattern.endsWith("*") && deviceId.startsWith(pattern.slice(0, -1))) {
         if (cfg.routes && Array.isArray(cfg.routes)) return cfg.routes;
       }
+    }
+    if (device?.deviceClass) {
+      const classCfg = this._config.deviceClasses[device.deviceClass];
+      if (classCfg?.routes && Array.isArray(classCfg.routes)) return classCfg.routes;
     }
     if (device?.axes) return buildRoutes(device.axes);
     return DEFAULT_ROUTES;
@@ -912,6 +1021,38 @@ function onManager(fn) {
   return () => listeners.delete(fn);
 }
 
+// packages/client/src/elements/locale.ts
+var DEFAULT_LOCALE = {
+  // satmouse-status
+  connected: "Connected",
+  connecting: "Connecting...",
+  disconnected: "Disconnected",
+  notRunning: "Not running",
+  extensionRequired: "Extension required",
+  launchSatMouse: "Launch SatMouse",
+  downloadSatMouse: "Download SatMouse",
+  enableExtension: "Enable Extension",
+  // satmouse-devices
+  noDevices: "No devices",
+  flip: "Flip",
+  translateScale: "Trans",
+  rotateScale: "Rot",
+  wScale: "W",
+  buttonMappings: "Button Mappings",
+  remapKey: "Remap key",
+  pressAKey: "Press a key...",
+  remove: "Remove",
+  addButtonMapping: "+ Add Button Mapping",
+  pressDeviceButton: "Press a device button...",
+  restoreDefaults: "Restore Defaults",
+  // satmouse-debug
+  fps: "fps"
+};
+var current = { ...DEFAULT_LOCALE };
+function t(key) {
+  return current[key];
+}
+
 // packages/client/src/elements/satmouse-status.ts
 var TEMPLATE = `
 <style>
@@ -927,9 +1068,9 @@ var TEMPLATE = `
 
 </style>
 <span class="dot"></span>
-<span class="text">Disconnected</span>
+<span class="text"></span>
 <span class="protocol"></span>
-<button class="launch">Launch SatMouse</button>
+<button class="launch"></button>
 `;
 var SatMouseStatus = class extends HTMLElement {
   dot;
@@ -948,6 +1089,8 @@ var SatMouseStatus = class extends HTMLElement {
     this.text = shadow.querySelector(".text");
     this.proto = shadow.querySelector(".protocol");
     this.launch = shadow.querySelector(".launch");
+    this.text.textContent = t("disconnected");
+    this.launch.textContent = t("launchSatMouse");
     this.launch.addEventListener("click", () => {
       this.startLaunchFlow();
     });
@@ -956,7 +1099,7 @@ var SatMouseStatus = class extends HTMLElement {
     this.unsub = onManager((mgr) => this.bind(mgr));
     this.stopPoll();
     this.launch.disabled = false;
-    this.launch.textContent = "Launch SatMouse";
+    this.launch.textContent = t("launchSatMouse");
   }
   disconnectedCallback() {
     this.stopPoll();
@@ -979,30 +1122,30 @@ var SatMouseStatus = class extends HTMLElement {
     if (state === "connected") {
       this.stopPoll();
       this.showDownload = false;
-      this.text.textContent = "Connected";
+      this.text.textContent = t("connected");
       this.launch.style.display = "none";
     } else if (state === "connecting") {
-      this.text.textContent = "Connecting...";
+      this.text.textContent = t("connecting");
       this.launch.style.display = "none";
     } else if (state === "failed") {
       const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
       const hasExtension = !!globalThis.__satmouseExtensionAvailable;
       if (isSafari && !hasExtension) {
-        this.text.textContent = "Extension required";
+        this.text.textContent = t("extensionRequired");
         this.launch.style.display = "inline-block";
         this.launch.disabled = false;
-        this.launch.textContent = "Enable Extension";
+        this.launch.textContent = t("enableExtension");
         this.showDownload = false;
         this.needsExtension = true;
       } else {
-        this.text.textContent = "Not running";
+        this.text.textContent = t("notRunning");
         this.launch.style.display = "inline-block";
         this.launch.disabled = false;
-        this.launch.textContent = this.showDownload ? "Download SatMouse" : "Launch SatMouse";
+        this.launch.textContent = this.showDownload ? t("downloadSatMouse") : t("launchSatMouse");
         this.needsExtension = false;
       }
     } else {
-      this.text.textContent = "Disconnected";
+      this.text.textContent = t("disconnected");
       this.launch.style.display = "none";
     }
   }
@@ -1011,7 +1154,7 @@ var SatMouseStatus = class extends HTMLElement {
   startLaunchFlow() {
     if (this.needsExtension) {
       window.location.href = "satmouse://enable-extension";
-      this.launch.textContent = "Connecting...";
+      this.launch.textContent = t("connecting");
       this.launch.disabled = true;
       this.stopPoll();
       this.pollTimer = setInterval(() => {
@@ -1024,7 +1167,7 @@ var SatMouseStatus = class extends HTMLElement {
       setTimeout(() => {
         this.stopPoll();
         this.launch.disabled = false;
-        this.launch.textContent = "Enable Extension";
+        this.launch.textContent = t("enableExtension");
       }, 3e4);
       return;
     }
@@ -1032,7 +1175,7 @@ var SatMouseStatus = class extends HTMLElement {
       window.location.href = "https://github.com/kelnishi/SatMouse/releases/latest";
       return;
     }
-    this.launch.textContent = "Connecting...";
+    this.launch.textContent = t("connecting");
     this.launch.disabled = true;
     this.manager?.retry();
     window.location.href = "satmouse://launch";
@@ -1049,7 +1192,7 @@ var SatMouseStatus = class extends HTMLElement {
         this.stopPoll();
         this.showDownload = true;
         this.launch.disabled = false;
-        this.launch.textContent = "Download SatMouse";
+        this.launch.textContent = t("downloadSatMouse");
         return;
       }
       this.manager?.retry();
@@ -1122,8 +1265,12 @@ var SatMouseDevices = class extends HTMLElement {
     else this.removeDevice(device);
   };
   stateHandler = (state) => {
-    if (state === "connected") {
-      this.manager?.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d)));
+    if (state === "connected" && this.manager) {
+      for (const { device } of this.manager.getDevicesWithConfig()) {
+        this.addDevice(device);
+      }
+      this.manager.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d))).catch(() => {
+      });
     }
   };
   connectedCallback() {
@@ -1132,7 +1279,7 @@ var SatMouseDevices = class extends HTMLElement {
   disconnectedCallback() {
     this.unsub?.();
     this.unbind();
-    this.container.innerHTML = `<span class="empty">No devices</span>`;
+    this.container.innerHTML = `<span class="empty">${t("noDevices")}</span>`;
   }
   bind(mgr) {
     this.unbind();
@@ -1140,7 +1287,11 @@ var SatMouseDevices = class extends HTMLElement {
     mgr.on("deviceStatus", this.deviceStatusHandler);
     mgr.on("stateChange", this.stateHandler);
     if (mgr.state === "connected") {
-      mgr.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d)));
+      for (const { device } of mgr.getDevicesWithConfig()) {
+        this.addDevice(device);
+      }
+      mgr.fetchDeviceInfo().then((devices) => devices.forEach((d) => this.addDevice(d))).catch(() => {
+      });
     }
   }
   unbind() {
@@ -1178,7 +1329,7 @@ var SatMouseDevices = class extends HTMLElement {
     const routeGroup = document.createElement("div");
     routeGroup.className = "route-group";
     const deviceAxes = device.axes ?? ["tx", "ty", "tz", "rx", "ry", "rz"];
-    const routes = this.getRoutes(device.id, deviceAxes);
+    const routes = this.getRoutes(device, deviceAxes);
     for (let i = 0; i < deviceAxes.length; i++) {
       const route = routes[i] ?? { source: deviceAxes[i], target: deviceAxes[i].replace(/[+-]$/, "") };
       const row = document.createElement("div");
@@ -1186,7 +1337,7 @@ var SatMouseDevices = class extends HTMLElement {
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.checked = route.flip ?? false;
-      cb.title = "Flip";
+      cb.title = t("flip");
       const routeIndex = i;
       cb.addEventListener("change", () => {
         this.updateRoute(device.id, routeIndex, deviceAxes, { flip: cb.checked });
@@ -1211,9 +1362,9 @@ var SatMouseDevices = class extends HTMLElement {
     }
     controls.appendChild(routeGroup);
     for (const [label, key, globalKey] of [
-      ["Trans", "translateScale", "translateScale"],
-      ["Rot", "rotateScale", "rotateScale"],
-      ["W", "wScale", "wScale"]
+      [t("translateScale"), "translateScale", "translateScale"],
+      [t("rotateScale"), "rotateScale", "rotateScale"],
+      [t("wScale"), "wScale", "wScale"]
     ]) {
       const row = document.createElement("div");
       row.className = "slider-row";
@@ -1232,7 +1383,7 @@ var SatMouseDevices = class extends HTMLElement {
     btnSection.className = "btn-section";
     const btnLabel = document.createElement("div");
     btnLabel.className = "btn-section-label";
-    btnLabel.textContent = "Button Mappings";
+    btnLabel.textContent = t("buttonMappings");
     btnSection.appendChild(btnLabel);
     const buttonRoutes = cfg.buttonRoutes ?? [];
     const labels = device.buttonLabels ?? [];
@@ -1256,17 +1407,17 @@ var SatMouseDevices = class extends HTMLElement {
       const editBtn = document.createElement("button");
       editBtn.className = "btn-remove";
       editBtn.textContent = "\u270E";
-      editBtn.title = "Remap key";
+      editBtn.title = t("remapKey");
       const routeIdx = i;
       editBtn.addEventListener("click", () => {
-        keySpan.textContent = "Press a key...";
+        keySpan.textContent = t("pressAKey");
         keySpan.style.color = "#f39c12";
         const onKey = (e) => {
           e.preventDefault();
           e.stopPropagation();
           document.removeEventListener("keydown", onKey, true);
-          const current = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
-          const updated = current.map(
+          const current2 = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
+          const updated = current2.map(
             (r, j) => j === routeIdx ? { ...r, key: e.key, code: e.code } : r
           );
           mgr.updateDeviceConfig(device.id, { buttonRoutes: updated });
@@ -1278,10 +1429,10 @@ var SatMouseDevices = class extends HTMLElement {
       const removeBtn = document.createElement("button");
       removeBtn.className = "btn-remove";
       removeBtn.textContent = "\xD7";
-      removeBtn.title = "Remove";
+      removeBtn.title = t("remove");
       removeBtn.addEventListener("click", () => {
-        const current = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
-        const updated = current.filter((_, j) => j !== routeIdx);
+        const current2 = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
+        const updated = current2.filter((_, j) => j !== routeIdx);
         mgr.updateDeviceConfig(device.id, { buttonRoutes: updated });
         this.refreshControls(panel, device);
       });
@@ -1290,7 +1441,7 @@ var SatMouseDevices = class extends HTMLElement {
     }
     const addBtn = document.createElement("button");
     addBtn.className = "btn-add";
-    addBtn.textContent = "+ Add Button Mapping";
+    addBtn.textContent = t("addButtonMapping");
     addBtn.addEventListener("click", () => {
       if (addBtn.classList.contains("listening")) return;
       this.startButtonListen(addBtn, mgr, device, panel);
@@ -1299,7 +1450,7 @@ var SatMouseDevices = class extends HTMLElement {
     controls.appendChild(btnSection);
     const resetBtn = document.createElement("button");
     resetBtn.className = "reset-btn";
-    resetBtn.textContent = "Restore Defaults";
+    resetBtn.textContent = t("restoreDefaults");
     resetBtn.addEventListener("click", () => {
       mgr.resetDeviceConfig(device.id);
       this.refreshControls(panel, device);
@@ -1307,30 +1458,35 @@ var SatMouseDevices = class extends HTMLElement {
     controls.appendChild(resetBtn);
     panel.appendChild(controls);
   }
-  getRoutes(deviceId, deviceAxes) {
+  getRoutes(device, deviceAxes) {
     const mgr = this.manager;
-    const devCfg = mgr.config.devices[deviceId];
+    const devCfg = mgr.config.devices[device.id];
     if (devCfg?.routes && Array.isArray(devCfg.routes)) return devCfg.routes;
     for (const [pattern, cfg] of Object.entries(mgr.config.devices)) {
-      if (pattern.endsWith("*") && deviceId.startsWith(pattern.slice(0, -1))) {
+      if (pattern.endsWith("*") && device.id.startsWith(pattern.slice(0, -1))) {
         if (cfg.routes && Array.isArray(cfg.routes)) return cfg.routes;
       }
+    }
+    if (device.deviceClass && mgr.config.deviceClasses) {
+      const classCfg = mgr.config.deviceClasses[device.deviceClass];
+      if (classCfg?.routes && Array.isArray(classCfg.routes)) return classCfg.routes;
     }
     return buildRoutes(deviceAxes);
   }
   updateRoute(deviceId, index, deviceAxes, patch) {
-    const base = this.getRoutes(deviceId, deviceAxes);
+    const device = Array.from(this.manager.getDevicesWithConfig()).find((d) => d.device.id === deviceId)?.device;
+    const base = this.getRoutes(device ?? { id: deviceId }, deviceAxes);
     const updated = base.map((r, j) => j === index ? { ...r, ...patch } : { ...r });
     this.manager.updateDeviceConfig(deviceId, { routes: updated });
   }
   startButtonListen(btn, mgr, device, panel) {
     btn.classList.add("listening");
-    btn.textContent = "Press a device button...";
+    btn.textContent = t("pressDeviceButton");
     const onButton = (event) => {
       if (!event.pressed) return;
       mgr.off("buttonEvent", onButton);
       const capturedButton = event.button;
-      btn.textContent = `Btn ${capturedButton} \u2192 Press a key...`;
+      btn.textContent = `Btn ${capturedButton} \u2192 ${t("pressAKey")}`;
       const onKey = (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1340,8 +1496,8 @@ var SatMouseDevices = class extends HTMLElement {
           key: e.key,
           code: e.code
         };
-        const current = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
-        const updated = current.filter((r) => r.button !== capturedButton);
+        const current2 = mgr.getDeviceConfig(device.id).buttonRoutes ?? [];
+        const updated = current2.filter((r) => r.button !== capturedButton);
         updated.push(route);
         mgr.updateDeviceConfig(device.id, { buttonRoutes: updated });
         this.refreshControls(panel, device);
@@ -1354,7 +1510,7 @@ var SatMouseDevices = class extends HTMLElement {
         mgr.off("buttonEvent", onButton);
         document.removeEventListener("keydown", onCancel, true);
         btn.classList.remove("listening");
-        btn.textContent = "+ Add Button Mapping";
+        btn.textContent = t("addButtonMapping");
       }
     };
     document.addEventListener("keydown", onCancel, true);
@@ -1362,7 +1518,7 @@ var SatMouseDevices = class extends HTMLElement {
   removeDevice(device) {
     this.shadowRoot.getElementById(`dev-${device.id}`)?.remove();
     if (this.container.children.length === 0) {
-      this.container.innerHTML = `<span class="empty">No devices</span>`;
+      this.container.innerHTML = `<span class="empty">${t("noDevices")}</span>`;
     }
   }
 };
@@ -1377,7 +1533,7 @@ var TEMPLATE2 = `
   .value { color: #3498db; text-align: right; min-width: 50px; }
   .meta { color: #7f8c8d; font-size: 11px; padding: 2px 0; }
 </style>
-<div class="meta"><span class="state">Disconnected</span> \xB7 <span class="protocol"></span> \xB7 <span class="fps">0</span> fps</div>
+<div class="meta"><span class="state"></span> \xB7 <span class="protocol"></span> \xB7 <span class="fps">0</span> <span class="fps-label"></span></div>
 <div class="row"><span class="label">TX</span><span class="value" id="tx">0</span></div>
 <div class="row"><span class="label">TY</span><span class="value" id="ty">0</span></div>
 <div class="row"><span class="label">TZ</span><span class="value" id="tz">0</span></div>
@@ -1414,6 +1570,8 @@ var SatMouseDebug = class extends HTMLElement {
     this.els.state = shadow.querySelector(".state");
     this.els.protocol = shadow.querySelector(".protocol");
     this.els.fps = shadow.querySelector(".fps");
+    this.els.state.textContent = t("disconnected");
+    shadow.querySelector(".fps-label").textContent = t("fps");
   }
   connectedCallback() {
     this.unsub = onManager((mgr) => this.bind(mgr));

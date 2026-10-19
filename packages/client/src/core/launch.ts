@@ -42,7 +42,7 @@ export function parseNegotiateCallback(searchParams: URLSearchParams): Negotiate
     wsPort: parseInt(wsPort, 10),
     wtPort: parseInt(searchParams.get("wtPort") ?? "18946", 10),
     httpsPort: parseInt(searchParams.get("httpsPort") ?? "18947", 10),
-    certHash: searchParams.get("certHash") ?? undefined,
+    certHash: searchParams.get("wtCertHash") ?? undefined,
     challenge: searchParams.get("challenge") ?? undefined,
   };
 }

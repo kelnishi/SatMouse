@@ -33,6 +33,10 @@
       if (port) port.postMessage({ action: "fetchDevices" });
     }
 
+    if (event.data.action === "focus") {
+      if (port) port.postMessage({ action: "focus", focused: event.data.focused === true });
+    }
+
     if (event.data.action === "disconnect") {
       if (port) { port.disconnect(); port = null; }
     }

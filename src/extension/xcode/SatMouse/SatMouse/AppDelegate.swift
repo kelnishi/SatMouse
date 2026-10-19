@@ -5,6 +5,9 @@ import SafariServices
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var serverProcess: Process?
+    /// Authorizes the status window's writes to the bridge (e.g. Rotatrix activation).
+    /// Generated per launch and shared only with the bridge process and the status window.
+    let controlToken = UUID().uuidString
     func applicationDidFinishLaunching(_ notification: Notification) {
         let execPath = Bundle.main.executablePath ?? ""
         if execPath.contains("/AppTranslocation/") {
@@ -24,16 +27,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem?.button?.title = "🛰"
         let menu = NSMenu()
-        menu.addItem(withTitle: "About SatMouse", action: #selector(openAbout), keyEquivalent: "")
+        menu.addItem(withTitle: "Devices…", action: #selector(openAbout), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Open Web Client", action: #selector(openClient), keyEquivalent: "")
         menu.addItem(withTitle: "Refresh Devices", action: #selector(refreshDevices), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit", action: #selector(quitApp), keyEquivalent: "q")
+        // No ⌘Q: a status item's menu sees key equivalents only while open,
+        // so the shortcut would quit the frontmost app instead
+        menu.addItem(withTitle: "Quit", action: #selector(quitApp), keyEquivalent: "")
         statusItem?.menu = menu
         startServer()
+    }
 
-        // Register for satmouse:// URL scheme events
+    // Registered before launch finishes, so the URL that launched the app is delivered too
+    func applicationWillFinishLaunching(_ notification: Notification) {
         NSAppleEventManager.shared().setEventHandler(
             self, andSelector: #selector(handleURL(_:withReply:)),
             forEventClass: AEEventClass(kInternetEventClass),
@@ -51,7 +58,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case "enable-extension":
             openExtensionPreferences()
         case "launch":
-            break // App is already running
+            // A web client asked for SatMouse: show its devices, where setup offers appear
+            DispatchQueue.main.async { self.openAbout() }
         default:
             break
         }
@@ -72,7 +80,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let script = (res as NSString).appendingPathComponent("main.cjs")
         guard FileManager.default.fileExists(atPath: node), FileManager.default.fileExists(atPath: script) else { NSLog("[SatMouse] Node not found"); return }
         let p = Process(); p.executableURL = URL(fileURLWithPath: node); p.arguments = [script]
-        p.environment = ProcessInfo.processInfo.environment.merging(["SATMOUSE_CHILD":"1"], uniquingKeysWith:{_,n in n})
+        p.environment = ProcessInfo.processInfo.environment.merging(["SATMOUSE_CHILD":"1", "SATMOUSE_CONTROL_TOKEN":controlToken], uniquingKeysWith:{_,n in n})
         p.currentDirectoryURL = URL(fileURLWithPath: res)
         p.standardOutput = FileHandle.standardOutput; p.standardError = FileHandle.standardError
         p.terminationHandler = { [weak self] proc in NSLog("[SatMouse] Server exited (\(proc.terminationStatus))"); DispatchQueue.main.async { self?.serverProcess = nil; NSApp.terminate(nil) } }

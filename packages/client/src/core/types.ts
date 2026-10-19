@@ -23,7 +23,7 @@ export interface ButtonEvent {
 }
 
 /** Device form factor */
-export type DeviceClass = "spacemouse" | "gamepad" | "dial" | "joystick" | "6dof" | "other";
+export type DeviceClass = "spacemouse" | "gamepad" | "dial" | "joystick" | "6dof" | "trackball" | "other";
 
 /** Device metadata from the bridge */
 export interface DeviceInfo {
@@ -63,7 +63,9 @@ export interface ThingDescription {
   id: string;
   base?: string;
   version?: { instance: string };
-  "satmouse:certHash"?: string;
+  /** WebTransport certificate hash. Bridges before 0.19.0 published it as
+   *  `satmouse:certHash`, for a certificate Chrome rejects. */
+  "satmouse:wtCertHash"?: string;
   properties?: {
     deviceInfo?: { forms: Array<{ href: string; op: string }> };
   };
@@ -100,4 +102,10 @@ export interface ConnectOptions {
   maxRetries?: number;
   /** WebSocket subprotocol. Default: "satmouse-json" */
   wsSubprotocol?: "satmouse-json" | "satmouse-binary";
+  /**
+   * Report this page's focus to the bridge. Devices whose driver routes input
+   * to the focused application (Rotatrix via OpenAxis) deliver input only
+   * while a reporting page is focused. Default: true
+   */
+  reportFocus?: boolean;
 }
