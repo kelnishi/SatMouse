@@ -40,7 +40,7 @@ function resolveEndpoints(td) {
   if (wtForm) {
     result.webtransport = {
       url: wtForm.href,
-      certHash: td["satmouse:certHash"]
+      certHash: td["satmouse:wtCertHash"]
     };
   }
   const wsForm = spatialForms.find((f) => f.subprotocol === "websocket");
