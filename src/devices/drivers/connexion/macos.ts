@@ -128,8 +128,10 @@ export class MacOSConnexionDriver extends ConnexionDriver {
       console.log(`[3Dconnexion/macOS] Registered client ID: ${this.clientId}`);
     }
 
+    // One non-blocking pass every 4 ms. A timeout would park Node's only
+    // thread in the run loop and delay every other device's input behind it.
     this.runLoopTimer = setInterval(() => {
-      CFRunLoopRunInMode(defaultMode, 0.01, false);
+      CFRunLoopRunInMode(defaultMode, 0, false);
     }, 4);
 
     this._connected = true;
