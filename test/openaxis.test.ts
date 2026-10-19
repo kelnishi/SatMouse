@@ -95,6 +95,8 @@ test("handshake declares a client without a target and starts unfocused", () => 
   assert.deepEqual(conn.tags, ["app.satmouse", "satmouse.activation.hold"]);
   assert.equal(conn.focused, false);
   assert.deepEqual(conn.axes, ["tx", "ty", "tz", "rx", "ry", "rz"]);
+  // A deflated stream is read one message per event-loop turn (see client.ts)
+  assert.equal(conn.extensions, "");
 });
 
 test("a focused page makes the bridge the active OpenAxis client and receives re-framed rates", async () => {

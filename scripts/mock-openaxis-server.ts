@@ -22,6 +22,8 @@ export interface MockConnection {
   tags: string[];
   focused: boolean | null;
   axes: string[];
+  /** Negotiated WebSocket extensions ("" when none) */
+  extensions: string;
 }
 
 export interface MockOpenAxisServer {
@@ -39,7 +41,8 @@ export interface MockOpenAxisServer {
 }
 
 export async function startMockOpenAxisServer(port = 0): Promise<MockOpenAxisServer> {
-  const wss = new WebSocketServer({ host: "127.0.0.1", port });
+  // Accepts permessage-deflate when offered, as Rotatrix's server does
+  const wss = new WebSocketServer({ host: "127.0.0.1", port, perMessageDeflate: true });
   await new Promise<void>((resolve) => wss.once("listening", resolve));
   const { port: boundPort } = wss.address() as AddressInfo;
 
@@ -54,7 +57,7 @@ export async function startMockOpenAxisServer(port = 0): Promise<MockOpenAxisSer
   };
 
   wss.on("connection", (ws) => {
-    const conn: MockConnection = { ws, hello: null, tags: [], focused: null, axes: [] };
+    const conn: MockConnection = { ws, hello: null, tags: [], focused: null, axes: [], extensions: ws.extensions };
     connections.add(conn);
     ws.on("close", () => connections.delete(conn));
     ws.on("message", (data, isBinary) => {
