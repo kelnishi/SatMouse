@@ -93,18 +93,18 @@ function profileControl() {
     var el = document.createElement("div");
     el.className = "profile-install";
     if (rotatrixProfile === "disabled") {
-        el.textContent = "Profile disabled in Rotatrix";
-        el.title = "Turn the satmouse profile back on in Rotatrix's Config → Profiles.";
+        el.textContent = "Profile disabled";
+        el.title = "Turn the satmouse profile back on in the device's configuration (Config → Profiles).";
         return el;
     }
     if (profileInstallStarted) {
         var hint = document.createElement("span");
-        hint.textContent = "Finish in Rotatrix: Import profile, then Apply";
+        hint.textContent = "Finish in the window that opened: Import profile, then Apply";
         el.appendChild(hint);
     }
     var b = document.createElement("button");
     b.textContent = profileInstallStarted ? "Open again" : "Install profile";
-    b.title = "Adds SatMouse's profile to Rotatrix, which needs it to send 3D input to SatMouse pages.";
+    b.title = "Adds SatMouse's profile to the device's configuration, which it needs to send 3D input to SatMouse pages.";
     b.disabled = !profileImportUrl;
     b.addEventListener("click", installProfile);
     el.appendChild(b);

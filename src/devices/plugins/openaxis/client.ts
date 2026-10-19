@@ -78,8 +78,8 @@ export class OpenAxisClient extends EventEmitter<OpenAxisClientEvents> {
     return new Promise((resolve, reject) => {
       // No permessage-deflate. Rotatrix accepts it, and ws inflates each
       // message on the threadpool, so a compressed stream is read one message
-      // per event-loop turn. The 3Dconnexion run-loop pump stretches those
-      // turns to ~32 ms in the packaged app, capping 60 Hz frames at ~31/s.
+      // per event-loop turn and any slow turn caps the frame rate (~32 ms
+      // turns in the packaged app held 60 Hz frames to ~31/s).
       const socket = new WebSocket(this.options.url, { maxPayload: MAX_MESSAGE_BYTES, perMessageDeflate: false });
       this.socket = socket;
       let settled = false;
