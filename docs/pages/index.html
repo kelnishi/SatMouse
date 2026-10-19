@@ -688,15 +688,17 @@
 
   <script type="module">
     // Live demo — connects to SatMouse bridge on localhost if running
-    import { SatMouseConnection } from "https://unpkg.com/@kelnishi/satmouse-client@0.18.0/dist/core/index.js";
-    import { InputManager } from "https://unpkg.com/@kelnishi/satmouse-client@0.18.0/dist/utils/index.js";
-    import { registerSatMouse } from "https://unpkg.com/@kelnishi/satmouse-client@0.18.0/dist/elements/index.js";
+    import { SatMouseConnection } from "https://unpkg.com/@kelnishi/satmouse-client@0.19.0/dist/core/index.js";
+    import { InputManager } from "https://unpkg.com/@kelnishi/satmouse-client@0.19.0/dist/utils/index.js";
+    import { registerSatMouse } from "https://unpkg.com/@kelnishi/satmouse-client@0.19.0/dist/elements/index.js";
 
     // Check if we're returning from a negotiate callback
     const params = new URLSearchParams(globalThis.location.search);
     const negotiatedIp = params.get("ip");
     const negotiatedWsPort = params.get("wsPort");
-    const negotiatedCertHash = params.get("certHash");
+    // wtCertHash from bridges 0.19.0+. Earlier bridges sent certHash for a
+    // certificate Chrome rejects, so it is not read.
+    const negotiatedCertHash = params.get("wtCertHash");
 
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     const connectOptions = {
@@ -720,7 +722,7 @@
       // Clean the URL
       history.replaceState(null, "", location.pathname);
     } else if (negotiatedIp) {
-      console.warn("[SatMouse Demo] Negotiate returned ip but no certHash — WebTransport unavailable");
+      console.warn("[SatMouse Demo] Negotiate returned ip but no wtCertHash — WebTransport unavailable");
     }
 
     const connection = new SatMouseConnection(connectOptions);
