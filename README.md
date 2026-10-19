@@ -130,6 +130,11 @@ Clients can also connect via the `satmouse://` URL scheme:
 | **Orbion** | Orbion rotary dial | 3DconnexionClient.framework | 3DxWare SDK | libspnav |
 | **CadMouse** | CadMouse Pro/Compact (buttons only) | 3DconnexionClient.framework | 3DxWare SDK | libspnav |
 | **HID** | Space Mushroom, Xbox/PlayStation controllers, any USB HID | node-hid | node-hid | node-hid |
+| **OpenAxis** | OpenAxis input from Rotatrix | OpenAxis client | OpenAxis client | OpenAxis client |
+
+The Rotatrix desktop app sends input only to the OpenAxis client whose page has focus, and selects its profile from that client's tags. SatMouse relays focus from its web clients, and needs a SatMouse profile in the Rotatrix app. On macOS the Devices window offers a one-click install; elsewhere, import the profile from `http://127.0.0.1:18945/api/openaxis/profile.rotatrix`.
+
+OpenAxis and Rotatrix are trademarks of Icebound Flame LLC. SatMouse is not affiliated with or endorsed by Icebound Flame LLC.
 
 ### Adding a hardware plugin
 
