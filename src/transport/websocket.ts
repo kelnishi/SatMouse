@@ -141,8 +141,10 @@ export class SatMouseWebSocketServer {
       subprotocol: c.subprotocol,
       origin: c.origin,
       browser: parseBrowser(c.userAgent),
-      // Extension clients connect from the background script (no origin, node-like UA)
-      extension: c.origin === "" && c.userAgent.includes("Safari") && !c.userAgent.includes("Chrome"),
+      // The Safari extension connects from its background script. Current
+      // Safari sends the extension's own origin; earlier versions sent none.
+      extension: c.origin.startsWith("safari-web-extension://") ||
+        (c.origin === "" && c.userAgent.includes("Safari") && !c.userAgent.includes("Chrome")),
     }));
   }
 
