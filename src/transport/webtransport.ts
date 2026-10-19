@@ -35,9 +35,7 @@ export class WebTransportServer {
 
   async start(): Promise<void> {
     const { readFileSync } = await import("node:fs");
-    const { Http3Server } = await import("@anthropic-ai/sdk" as any).catch(
-      () => import("@fails-components/webtransport")
-    );
+    const { Http3Server } = await import("@fails-components/webtransport");
 
     const cert = readFileSync(this.certPath);
     const key = readFileSync(this.keyPath);
